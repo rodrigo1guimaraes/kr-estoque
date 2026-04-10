@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KR Desinsetização — Sistema de Estoque</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f5f3;color:#1a1a1a}
+.app{display:grid;grid-template-columns:215px 1fr;min-height:100vh}
+.sidebar{background:#f0efe8;border-right:1px solid #e0e0d8;padding:16px 0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.logo{padding:0 16px 14px;border-bottom:1px solid #e0e0d8;margin-bottom:6px}
+.logo-title{font-size:13px;font-weight:700;color:#1a1a1a}
+.logo-sub{font-size:11px;color:#888780}
+.sync-status{margin:8px 16px;padding:6px 10px;border-radius:6px;font-size:11px;display:flex;align-items:center;gap:6px}
+.sync-status.online{background:#EAF3DE;color:#3B6D11}
+.sync-status.offline{background:#FAEEDA;color:#854F0B}
+.sync-status.loading{background:#E6F1FB;color:#0C447C}
+.nav-item{display:flex;align-items:center;gap:8px;padding:9px 16px;font-size:13px;cursor:pointer;color:#888780;border-left:2px solid transparent;transition:all .15s;user-select:none}
+.nav-item:hover{background:#fff;color:#1a1a1a}
+.nav-item.active{color:#0F6E56;background:#fff;border-left-color:#1D9E75;font-weight:600}
+.nav-icon{font-size:13px;width:16px;text-align:center}
+.nav-badge{background:#E24B4A;color:#fff;font-size:10px;padding:1px 5px;border-radius:10px;margin-left:auto;display:none}
+.main{background:#fff;overflow:auto;display:flex;flex-direction:column;min-height:100vh}
+.header{padding:14px 20px;border-bottom:1px solid #e8e8e0;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:10}
+.page-title{font-size:15px;font-weight:700;color:#1a1a1a}
+.page-sub{font-size:11px;color:#888780;margin-top:2px}
+.content{padding:16px 20px;flex:1}
+.hidden{display:none!important}
+.cards-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
+.card{background:#f5f5f3;border-radius:8px;padding:12px}
+.card-label{font-size:11px;color:#888780;margin-bottom:4px}
+.card-value{font-size:20px;font-weight:700;color:#1a1a1a}
+.card-value.green{color:#0F6E56}.card-value.amber{color:#BA7517}.card-value.red{color:#A32D2D}
+.btn{padding:6px 13px;font-size:12px;border-radius:7px;cursor:pointer;border:1px solid #d0d0c8;background:#fff;color:#1a1a1a;transition:all .15s;font-family:inherit}
+.btn:hover{background:#f5f5f3}
+.btn.primary{background:#1D9E75;color:#fff;border-color:#1D9E75}
+.btn.primary:hover{background:#0F6E56}
+.btn.danger{background:#E24B4A;color:#fff;border-color:#E24B4A}
+.btn.warning{background:#EF9F27;color:#fff;border-color:#EF9F27}
+.btn.sm{padding:4px 10px;font-size:11px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.row-between{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.section-title{font-size:13px;font-weight:600;color:#1a1a1a}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{border-bottom:1px solid #e8e8e0}
+th{text-align:left;padding:7px 10px;font-size:11px;font-weight:600;color:#888780}
+td{padding:7px 10px;color:#1a1a1a;border-bottom:1px solid #f0f0e8}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafaf8}
+tr.estornada td{opacity:.5;text-decoration:line-through}
+tr.estornada td:last-child{opacity:1;text-decoration:none}
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:600}
+.badge.ok{background:#EAF3DE;color:#3B6D11}
+.badge.low{background:#FAEEDA;color:#854F0B}
+.badge.out{background:#FCEBEB;color:#A32D2D}
+.badge.ins{background:#E1F5EE;color:#085041}
+.badge.rod{background:#FAEEDA;color:#854F0B}
+.badge.epi{background:#E6F1FB;color:#0C447C}
+.badge.eqp{background:#EEEDFE;color:#3C3489}
+.badge.ent{background:#EAF3DE;color:#3B6D11}
+.badge.sai{background:#FCEBEB;color:#A32D2D}
+.badge.est{background:#F1EFE8;color:#5F5E5A}
+.tbl-wrap{border:1px solid #e8e8e0;border-radius:8px;overflow:hidden}
+.inp{padding:6px 10px;font-size:12px;border:1px solid #d0d0c8;border-radius:7px;background:#fff;color:#1a1a1a;outline:none;font-family:inherit}
+.inp:focus{border-color:#1D9E75;box-shadow:0 0 0 2px rgba(29,158,117,.12)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;z-index:50;padding:30px 20px;overflow:auto}
+.modal{background:#fff;border-radius:12px;border:1px solid #e8e8e0;padding:20px;width:500px;max-width:100%;margin:auto}
+.modal-title{font-size:14px;font-weight:700;margin-bottom:14px;color:#1a1a1a}
+.form-row{margin-bottom:11px}
+.form-row label{display:block;font-size:11px;font-weight:600;color:#888780;margin-bottom:3px}
+.form-row .inp,.form-row select{width:100%}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.drop-zone{border:2px dashed #d0d0c8;border-radius:12px;padding:32px 20px;text-align:center;cursor:pointer;transition:all .2s;background:#fafaf8}
+.drop-zone:hover,.drop-zone.drag{border-color:#1D9E75;background:#E1F5EE44}
+.nota-card{border:1px solid #e8e8e0;border-radius:8px;overflow:hidden;background:#fff}
+.nota-thumb{width:100%;height:90px;background:#f5f5f3;display:flex;align-items:center;justify-content:center;font-size:28px;cursor:pointer;overflow:hidden}
+.nota-thumb img{width:100%;height:100%;object-fit:cover}
+.nota-foot{padding:8px 10px}
+.nota-fname{font-size:12px;font-weight:600;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nota-fmeta{font-size:10px;color:#888780;margin-top:2px}
+.nota-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
+.ocr-status{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;margin-bottom:8px;font-size:12px}
+.ocr-status.running{background:#E6F1FB;color:#0C447C;border:1px solid #B5D4F4}
+.ocr-status.done{background:#EAF3DE;color:#3B6D11;border:1px solid #C0DD97}
+.ocr-status.error{background:#FCEBEB;color:#A32D2D;border:1px solid #F7C1C1}
+.ocr-result{background:#f5f5f3;border-radius:8px;padding:12px;margin-bottom:10px}
+.ocr-result-title{font-size:11px;font-weight:600;color:#888780;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em}
+.ocr-field{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e8e8e0;font-size:12px}
+.ocr-field:last-child{border-bottom:none}
+.ocr-field-label{color:#888780}
+.ocr-field-value{font-weight:600;color:#1a1a1a;max-width:60%;text-align:right}
+.spin{display:inline-block;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.progress-wrap{height:4px;background:#e8e8e0;border-radius:2px;overflow:hidden;margin-top:8px}
+.progress-fill{height:100%;background:#1D9E75;border-radius:2px;transition:width .3s}
+.alert-item{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fafaf8;margin-bottom:6px;border-left:3px solid #EF9F27}
+.alert-item.critical{border-left-color:#E24B4A}
+.preview-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
+.preview-box{background:#fff;border-radius:12px;padding:16px;max-width:90%;max-height:90vh;overflow:auto}
+.preview-img{max-width:100%;max-height:420px;border-radius:8px;display:block}
+.ocr-box{border:1px solid #e8e8e0;border-radius:8px;padding:14px;margin-bottom:10px;background:#fff}
+.loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:12px;color:#888780;font-size:13px}
+.estorno-info{background:#FFF8E8;border:1px solid #FAEEDA;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#854F0B}
+.log-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f0f0e8;font-size:12px}
+.log-row:last-child{border-bottom:none}
+.log-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px}
+.log-icon.add{background:#EAF3DE;color:#3B6D11}
+.log-icon.edit{background:#E6F1FB;color:#0C447C}
+.log-icon.del{background:#FCEBEB;color:#A32D2D}
+.log-icon.estorno{background:#FAEEDA;color:#854F0B}
+.log-icon.mov{background:#EEEDFE;color:#3C3489}
+.log-time{font-size:10px;color:#888780;margin-top:2px}
+</style>
+</head>
+<body>
+
+<div id="loading-screen" class="loading-screen">
+  <div class="spin" style="font-size:24px">↻</div>
+  <div>Conectando ao Firebase...</div>
+</div>
+
+<div id="app-root" class="app hidden">
+  <div class="sidebar">
+    <div class="logo">
+      <div class="logo-title">KR Desinsetização</div>
+      <div class="logo-sub">Sistema de Estoque</div>
+    </div>
+    <div class="sync-status loading" id="sync-status">
+      <span class="spin">↻</span> Sincronizando...
+    </div>
+    <div class="nav-item active" onclick="navTo('estoque',this)"><span class="nav-icon">▦</span> Estoque</div>
+    <div class="nav-item" onclick="navTo('movimentacoes',this)"><span class="nav-icon">⇄</span> Movimentações</div>
+    <div class="nav-item" onclick="navTo('notas',this)"><span class="nav-icon">◈</span> Notas fiscais</div>
+    <div class="nav-item" onclick="navTo('historico',this)"><span class="nav-icon">↗</span> Histórico</div>
+    <div class="nav-item" onclick="navTo('alertas',this)"><span class="nav-icon">⚠</span> Alertas <span class="nav-badge" id="nbadge"></span></div>
+    <div class="nav-item" onclick="navTo('auditoria',this)"><span class="nav-icon">🔒</span> Auditoria</div>
+  </div>
+
+  <div class="main">
+    <!-- ESTOQUE -->
+    <div id="page-estoque">
+      <div class="header">
+        <div><div class="page-title">Estoque</div><div class="page-sub">Produtos e equipamentos</div></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="inp" style="width:160px" placeholder="Buscar..." oninput="filtrarEst(this.value)">
+          <select class="inp" style="width:130px" onchange="filtrarCat(this.value)">
+            <option value="">Todas</option><option>Inseticida</option><option>Rodenticida</option><option>Fungicida</option><option>Equipamento</option><option>EPI</option>
+          </select>
+          <button class="btn primary" onclick="abrirModalProd()">+ Novo produto</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="cards-grid" id="cards-est"></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Produto</th><th>Categoria</th><th>Qtd.</th><th>Mín.</th><th>Un.</th><th>Status</th><th>Ações</th></tr></thead><tbody id="tbody-est"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- MOVIMENTAÇÕES -->
+    <div id="page-movimentacoes" class="hidden">
+      <div class="header">
+        <div><div class="page-title">Movimentações</div><div class="page-sub">Entradas e saídas — estornos não apagam o histórico</div></div>
+        <button class="btn primary" onclick="abrirModalMov(null)">+ Registrar</button>
+      </div>
+      <div class="content">
+        <div class="tbl-wrap"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd.</th><th>Fornecedor</th><th>Nº Nota</th><th>Responsável</th><th>Status</th><th>Ação</th></tr></thead><tbody id="tbody-mov"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- NOTAS FISCAIS + OCR -->
+    <div id="page-notas" class="hidden">
+      <div class="header">
+        <div><div class="page-title">Notas fiscais</div><div class="page-sub">Upload com OCR automático gratuito</div></div>
+        <span id="notas-count" style="font-size:11px;color:#888780">0 arquivos</span>
+      </div>
+      <div class="content">
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()" ondragover="onDragOver(event)" ondragleave="onDragLeave()" ondrop="onDrop(event)">
+          <div style="font-size:32px;margin-bottom:8px">📄</div>
+          <div style="font-size:14px;font-weight:600;color:#1a1a1a;margin-bottom:4px">Arraste a nota fiscal ou clique para selecionar</div>
+          <div style="font-size:12px;color:#888780">JPG, PNG, WEBP, BMP, TIFF, HEIC, PDF — OCR extrai fornecedor, CNPJ, nº e data automaticamente</div>
+          <input id="file-input" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tiff,.tif,.heic,.heif,.pdf" style="display:none" onchange="handleFiles(this.files)">
+        </div>
+        <div id="ocr-area" style="margin-top:16px"></div>
+        <div id="notas-galeria-wrap" class="hidden" style="margin-top:8px">
+          <div class="row-between"><div class="section-title">Documentos salvos</div></div>
+          <div class="nota-grid" id="notas-grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTÓRICO -->
+    <div id="page-historico" class="hidden">
+      <div class="header">
+        <div><div class="page-title">Histórico de consumo</div><div class="page-sub">Apenas saídas ativas (estornos excluídos)</div></div>
+        <select class="inp" id="sel-hist" onchange="renderHist()">
+          <option value="6">Últimos 6 meses</option><option value="3">Últimos 3 meses</option><option value="12">Últimos 12 meses</option>
+        </select>
+      </div>
+      <div class="content">
+        <div class="cards-grid" id="cards-hist"></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Mês</th><th>Produto</th><th>Categoria</th><th>Consumo</th><th>Responsável</th></tr></thead><tbody id="tbody-hist"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- ALERTAS -->
+    <div id="page-alertas" class="hidden">
+      <div class="header"><div><div class="page-title">Alertas</div><div class="page-sub">Estoque abaixo do mínimo</div></div></div>
+      <div class="content" id="content-alertas"></div>
+    </div>
+
+    <!-- AUDITORIA -->
+    <div id="page-auditoria" class="hidden">
+      <div class="header">
+        <div><div class="page-title">Log de auditoria</div><div class="page-sub">Registro imutável de todas as ações</div></div>
+        <input class="inp" style="width:200px" placeholder="Filtrar por responsável..." oninput="filtrarLog(this.value)">
+      </div>
+      <div class="content">
+        <div id="log-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PRODUTO -->
+<div id="modal-prod" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title" id="mprod-titulo">Novo produto</div>
+    <div class="form-grid">
+      <div class="form-row" style="grid-column:1/-1"><label>Nome</label><input class="inp" id="mp-nome"></div>
+      <div class="form-row"><label>Categoria</label><select class="inp" id="mp-cat"><option>Inseticida</option><option>Rodenticida</option><option>Fungicida</option><option>Equipamento</option><option>EPI</option></select></div>
+      <div class="form-row"><label>Unidade</label><select class="inp" id="mp-un"><option>L</option><option>mL</option><option>kg</option><option>g</option><option>un</option><option>cx</option></select></div>
+      <div class="form-row"><label>Qtd. atual</label><input class="inp" id="mp-qtd" type="number" min="0"></div>
+      <div class="form-row"><label>Qtd. mínima</label><input class="inp" id="mp-min" type="number" min="0"></div>
+    </div>
+    <div class="modal-actions"><button class="btn" onclick="fecharModal('modal-prod')">Cancelar</button><button class="btn primary" onclick="salvarProd()">Salvar</button></div>
+  </div>
+</div>
+
+<!-- MODAL MOVIMENTAÇÃO -->
+<div id="modal-mov" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title">Registrar movimentação</div>
+    <div id="ocr-resumo"></div>
+    <div class="form-row"><label>Produto</label><select class="inp" id="mm-prod" style="width:100%"></select></div>
+    <div class="form-grid">
+      <div class="form-row"><label>Tipo</label><select class="inp" id="mm-tipo"><option value="entrada">Entrada</option><option value="saida">Saída</option></select></div>
+      <div class="form-row"><label>Quantidade</label><input class="inp" id="mm-qtd" type="number" min="1"></div>
+      <div class="form-row"><label>Fornecedor</label><input class="inp" id="mm-forn" placeholder="Extraído do OCR"></div>
+      <div class="form-row"><label>CNPJ</label><input class="inp" id="mm-cnpj" placeholder="Extraído do OCR"></div>
+      <div class="form-row"><label>Nº da Nota</label><input class="inp" id="mm-num" placeholder="Extraído do OCR"></div>
+      <div class="form-row"><label>Data</label><input class="inp" id="mm-data" type="date"></div>
+    </div>
+    <div class="form-row"><label>Responsável</label><input class="inp" id="mm-resp"></div>
+    <div class="modal-actions"><button class="btn" onclick="fecharModal('modal-mov')">Cancelar</button><button class="btn primary" onclick="salvarMov()">Salvar</button></div>
+  </div>
+</div>
+
+<!-- MODAL ESTORNO -->
+<div id="modal-estorno" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title">Solicitar estorno</div>
+    <div class="estorno-info">
+      ⚠ O estorno não apaga o registro original. Uma nova entrada de cancelamento será criada com data, responsável e motivo — visível no log de auditoria para todos.
+    </div>
+    <div id="estorno-info-mov" style="background:#f5f5f3;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px"></div>
+    <div class="form-row"><label>Responsável pelo estorno *</label><input class="inp" id="es-resp" placeholder="Seu nome completo"></div>
+    <div class="form-row"><label>Motivo do estorno *</label>
+      <select class="inp" id="es-motivo" style="width:100%;margin-bottom:6px" onchange="toggleMotivoCustom(this.value)">
+        <option value="">Selecione o motivo...</option>
+        <option value="Lançamento duplicado">Lançamento duplicado</option>
+        <option value="Nota fiscal incorreta">Nota fiscal incorreta</option>
+        <option value="Produto errado">Produto errado</option>
+        <option value="Quantidade incorreta">Quantidade incorreta</option>
+        <option value="Teste / treinamento">Teste / treinamento</option>
+        <option value="outro">Outro (descrever)</option>
+      </select>
+      <input class="inp hidden" id="es-motivo-custom" placeholder="Descreva o motivo..." style="width:100%">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharModal('modal-estorno')">Cancelar</button>
+      <button class="btn warning" onclick="confirmarEstorno()">Confirmar estorno</button>
+    </div>
+  </div>
+</div>
+
+<!-- PREVIEW -->
+<div id="preview-overlay" class="preview-overlay hidden">
+  <div class="preview-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="section-title" id="preview-title"></div>
+      <button class="btn sm" onclick="document.getElementById('preview-overlay').classList.add('hidden')">Fechar</button>
+    </div>
+    <img id="preview-img" class="preview-img">
+    <div id="preview-ocr" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDt7Jr4kTyWmK-l5zcOw6xxDm2Cu_vmxk0",
+  authDomain: "controle-de-estoque-282fd.firebaseapp.com",
+  projectId: "controle-de-estoque-282fd",
+  storageBucket: "controle-de-estoque-282fd.firebasestorage.app",
+  messagingSenderId: "585521071939",
+  appId: "1:585521071939:web:5bce2afa7c407d6e6451f6"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const CAT_BADGE={'Inseticida':'ins','Rodenticida':'rod','EPI':'epi','Equipamento':'eqp','Fungicida':'ins'};
+
+let produtos=[], movs=[], historico=[], logs=[];
+let notas=[];
+let filtroEst='', catEst='', filtroLog='';
+let editDocId=null, estornoDocId=null;
+
+function setSyncStatus(state){
+  const el=document.getElementById('sync-status');
+  if(state==='online'){el.className='sync-status online';el.innerHTML='● Sincronizado';}
+  else if(state==='loading'){el.className='sync-status loading';el.innerHTML='<span class="spin">↻</span> Sincronizando...';}
+  else{el.className='sync-status offline';el.innerHTML='⚠ Sem conexão';}
+}
+
+async function registrarLog(tipo, descricao, responsavel, dados={}){
+  try {
+    await addDoc(collection(db,'auditoria'),{
+      tipo, descricao, responsavel,
+      dados: JSON.stringify(dados),
+      timestamp: serverTimestamp(),
+      tsLocal: new Date().toISOString()
+    });
+  } catch(e){ console.error('Erro ao registrar log:',e); }
+}
+
+onSnapshot(collection(db,'produtos'),(snap)=>{
+  produtos=snap.docs.map(d=>({...d.data(),_id:d.id}));
+  renderEst();
+  setSyncStatus('online');
+  document.getElementById('loading-screen').classList.add('hidden');
+  document.getElementById('app-root').classList.remove('hidden');
+},(err)=>{setSyncStatus('offline');console.error(err);});
+
+onSnapshot(query(collection(db,'movimentacoes'),orderBy('data','desc')),(snap)=>{
+  movs=snap.docs.map(d=>({...d.data(),_id:d.id}));
+  renderMovs();
+});
+
+onSnapshot(query(collection(db,'historico'),orderBy('mes','desc')),(snap)=>{
+  historico=snap.docs.map(d=>({...d.data(),_id:d.id}));
+  renderHist();
+});
+
+onSnapshot(query(collection(db,'auditoria'),orderBy('tsLocal','desc')),(snap)=>{
+  logs=snap.docs.map(d=>({...d.data(),_id:d.id}));
+  renderLog();
+});
+
+window.navTo=(page,el)=>{
+  document.querySelectorAll('[id^=page-]').forEach(p=>p.classList.add('hidden'));
+  document.getElementById('page-'+page).classList.remove('hidden');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  el.classList.add('active');
+  if(page==='alertas')renderAlertas();
+  if(page==='historico')renderHist();
+  if(page==='notas')renderNotas();
+  if(page==='auditoria')renderLog();
+};
+
+function statusP(p){
+  if(p.qtd===0)return'<span class="badge out">Zerado</span>';
+  if(p.qtd<p.min)return'<span class="badge low">Baixo</span>';
+  return'<span class="badge ok">OK</span>';
+}
+function catBadge(c){return`<span class="badge ${CAT_BADGE[c]||'ins'}">${c}</span>`}
+
+function renderEst(){
+  const list=produtos.filter(p=>p.nome.toLowerCase().includes(filtroEst.toLowerCase())&&(catEst===''||p.cat===catEst));
+  const tot=produtos.length,ok=produtos.filter(p=>p.qtd>=p.min&&p.qtd>0).length;
+  const low=produtos.filter(p=>p.qtd>0&&p.qtd<p.min).length,zer=produtos.filter(p=>p.qtd===0).length;
+  document.getElementById('cards-est').innerHTML=`
+    <div class="card"><div class="card-label">Total de itens</div><div class="card-value">${tot}</div></div>
+    <div class="card"><div class="card-label">Estoque OK</div><div class="card-value green">${ok}</div></div>
+    <div class="card"><div class="card-label">Estoque baixo</div><div class="card-value amber">${low}</div></div>
+    <div class="card"><div class="card-label">Zerados</div><div class="card-value red">${zer}</div></div>`;
+  document.getElementById('tbody-est').innerHTML=list.length===0
+    ?'<tr><td colspan="7" style="text-align:center;padding:20px;color:#888780">Nenhum produto</td></tr>'
+    :list.map(p=>`<tr>
+      <td style="font-weight:600">${p.nome}</td><td>${catBadge(p.cat)}</td>
+      <td style="font-weight:600;color:${p.qtd===0?'#A32D2D':p.qtd<p.min?'#BA7517':'inherit'}">${p.qtd}</td>
+      <td>${p.min}</td><td style="color:#888780">${p.un}</td><td>${statusP(p)}</td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn sm" onclick="editarProd('${p._id}')">Editar</button>
+        <button class="btn danger sm" onclick="remProd('${p._id}','${p.nome}')">Excluir</button>
+      </div></td></tr>`).join('');
+  const al=produtos.filter(p=>p.qtd<p.min).length;
+  const nb=document.getElementById('nbadge');
+  nb.textContent=al||'';nb.style.display=al?'inline':'none';
+}
+window.filtrarEst=v=>{filtroEst=v;renderEst()};
+window.filtrarCat=v=>{catEst=v;renderEst()};
+
+window.abrirModalProd=()=>{
+  editDocId=null;
+  document.getElementById('mprod-titulo').textContent='Novo produto';
+  ['mp-nome','mp-qtd','mp-min'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('modal-prod').classList.remove('hidden');
+};
+window.editarProd=(id)=>{
+  const p=produtos.find(p=>p._id===id);if(!p)return;
+  editDocId=id;
+  document.getElementById('mprod-titulo').textContent='Editar produto';
+  document.getElementById('mp-nome').value=p.nome;
+  document.getElementById('mp-cat').value=p.cat;
+  document.getElementById('mp-un').value=p.un;
+  document.getElementById('mp-qtd').value=p.qtd;
+  document.getElementById('mp-min').value=p.min;
+  document.getElementById('modal-prod').classList.remove('hidden');
+};
+window.salvarProd=async()=>{
+  const nome=document.getElementById('mp-nome').value.trim();
+  if(!nome)return;
+  const obj={nome,cat:document.getElementById('mp-cat').value,un:document.getElementById('mp-un').value,qtd:+document.getElementById('mp-qtd').value||0,min:+document.getElementById('mp-min').value||0};
+  const resp = prompt('Seu nome (para registro de auditoria):');
+  if(!resp)return;
+  if(editDocId){
+    const ant=produtos.find(p=>p._id===editDocId);
+    await updateDoc(doc(db,'produtos',editDocId),obj);
+    await registrarLog('edit',`Produto editado: ${nome}`,resp,{antes:ant,depois:obj});
+  } else {
+    const ref=await addDoc(collection(db,'produtos'),obj);
+    await registrarLog('add',`Produto cadastrado: ${nome}`,resp,obj);
+  }
+  fecharModal('modal-prod');
+};
+window.remProd=async(id,nome)=>{
+  const resp=prompt('Seu nome para confirmar exclusão de: '+nome);
+  if(!resp)return;
+  const motivo=prompt('Motivo da exclusão (obrigatório):');
+  if(!motivo)return;
+  const p=produtos.find(p=>p._id===id);
+  await deleteDoc(doc(db,'produtos',id));
+  await registrarLog('del',`Produto excluído: ${nome}`,resp,{motivo,produto:p});
+};
+
+function renderMovs(){
+  document.getElementById('tbody-mov').innerHTML=movs.length===0
+    ?'<tr><td colspan="9" style="text-align:center;padding:20px;color:#888780">Nenhuma movimentação</td></tr>'
+    :movs.map(m=>{
+      const estornada=m.estornada===true;
+      return`<tr class="${estornada?'estornada':''}">
+        <td>${m.data}</td><td style="font-weight:600">${m.produto}</td>
+        <td><span class="badge ${m.tipo==='entrada'?'ent':m.tipo==='estorno'?'est':'sai'}">${m.tipo==='entrada'?'Entrada':m.tipo==='estorno'?'Estorno':'Saída'}</span></td>
+        <td>${m.qtd}</td>
+        <td style="color:#888780">${m.forn||'—'}</td>
+        <td style="color:#888780">${m.num||'—'}</td>
+        <td>${m.resp}</td>
+        <td>${estornada
+          ?`<span style="color:#888780;font-size:11px">Estornado por ${m.estornadoPor||'?'}</span>`
+          :m.tipo==='estorno'
+            ?`<span style="color:#854F0B;font-size:11px">Motivo: ${m.motivo||'—'}</span>`
+            :'<span class="badge ok">Ativo</span>'
+        }</td>
+        <td>${(!estornada&&m.tipo!=='estorno')
+          ?`<button class="btn warning sm" onclick="abrirEstorno('${m._id}')">Estornar</button>`
+          :'—'
+        }</td>
+      </tr>`;
+    }).join('');
+}
+
+window.abrirModalMov=(ocr)=>{
+  // Garante que há produtos cadastrados
+  if(produtos.length===0){
+    alert('Nenhum produto cadastrado no estoque.\nVá em Estoque → Novo produto e cadastre os produtos antes de registrar uma movimentação.');
+    return;
+  }
+
+  // Preenche lista de produtos
+  const selProd=document.getElementById('mm-prod');
+  selProd.innerHTML=produtos.map(p=>`<option value="${p.nome}">${p.nome}</option>`).join('');
+
+  // Reseta campos
+  document.getElementById('mm-data').value=new Date().toISOString().slice(0,10);
+  ['mm-qtd','mm-resp','mm-forn','mm-cnpj','mm-num'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('mm-tipo').value='entrada';
+
+  const resumo=document.getElementById('ocr-resumo');
+  if(ocr){
+    if(ocr.fornecedor) document.getElementById('mm-forn').value=ocr.fornecedor;
+    if(ocr.cnpj) document.getElementById('mm-cnpj').value=ocr.cnpj;
+    if(ocr.numero) document.getElementById('mm-num').value=ocr.numero;
+    if(ocr.data) document.getElementById('mm-data').value=ocr.data;
+    if(ocr.quantidade) document.getElementById('mm-qtd').value=ocr.quantidade;
+
+    // Tenta match do produto OCR com estoque (busca parcial)
+    if(ocr.produto){
+      const match=produtos.find(p=>
+        p.nome.toLowerCase().includes(ocr.produto.toLowerCase())||
+        ocr.produto.toLowerCase().includes(p.nome.toLowerCase().split(' ')[0])
+      );
+      if(match) selProd.value=match.nome;
+    }
+
+    const campos=[
+      ocr.fornecedor&&`<div class="ocr-field"><span class="ocr-field-label">Fornecedor</span><span class="ocr-field-value">${ocr.fornecedor}</span></div>`,
+      ocr.cnpj&&`<div class="ocr-field"><span class="ocr-field-label">CNPJ</span><span class="ocr-field-value">${ocr.cnpj}</span></div>`,
+      ocr.numero&&`<div class="ocr-field"><span class="ocr-field-label">Nº da nota</span><span class="ocr-field-value">${ocr.numero}</span></div>`,
+      ocr.data&&`<div class="ocr-field"><span class="ocr-field-label">Data</span><span class="ocr-field-value">${ocr.data}</span></div>`,
+    ].filter(Boolean).join('');
+
+    resumo.innerHTML=`<div class="ocr-result">
+      <div class="ocr-result-title">✓ Dados extraídos pelo OCR — revise antes de salvar</div>
+      ${campos||'<div style="color:#888780;font-size:12px">Nenhum dado extraído automaticamente.</div>'}
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e8e8e0;font-size:11px;color:#854F0B">
+        ⚠ Esta nota tem 2 produtos (Barapil e Pasta Verde). Registre uma movimentação para cada produto separadamente.
+      </div>
+    </div>`;
+  } else {
+    resumo.innerHTML='';
+  }
+
+  document.getElementById('modal-mov').classList.remove('hidden');
+};
+
+window.salvarMov=async()=>{
+  const prod=document.getElementById('mm-prod').value;
+  const tipo=document.getElementById('mm-tipo').value;
+  const qtd=+document.getElementById('mm-qtd').value||0;
+  const resp=document.getElementById('mm-resp').value.trim();
+  if(!qtd||!resp){alert('Preencha quantidade e responsável.');return;}
+  const pi=produtos.findIndex(p=>p.nome===prod);
+  if(pi>=0){
+    const novaQtd=tipo==='entrada'?produtos[pi].qtd+qtd:Math.max(0,produtos[pi].qtd-qtd);
+    await updateDoc(doc(db,'produtos',produtos[pi]._id),{qtd:novaQtd});
+  }
+  const mov={data:document.getElementById('mm-data').value,produto:prod,tipo,qtd,resp,forn:document.getElementById('mm-forn').value,cnpj:document.getElementById('mm-cnpj').value,num:document.getElementById('mm-num').value,estornada:false,criadoEm:new Date().toISOString()};
+  const ref=await addDoc(collection(db,'movimentacoes'),mov);
+  if(tipo==='saida'&&pi>=0){
+    await addDoc(collection(db,'historico'),{mes:mov.data.slice(0,7),produto:prod,cat:produtos[pi].cat,qtd,resp,movId:ref.id});
+  }
+  await registrarLog('mov',`${tipo==='entrada'?'Entrada':'Saída'} registrada: ${prod} (${qtd} un.)`,resp,mov);
+  fecharModal('modal-mov');
+};
+
+window.abrirEstorno=(movId)=>{
+  const m=movs.find(m=>m._id===movId);if(!m)return;
+  estornoDocId=movId;
+  document.getElementById('estorno-info-mov').innerHTML=`
+    <div style="font-weight:600;margin-bottom:4px">${m.produto}</div>
+    <div style="color:#888780">${m.tipo==='entrada'?'Entrada':'Saída'} de ${m.qtd} un. em ${m.data} — por ${m.resp}</div>
+    ${m.num?`<div style="color:#888780">Nota: ${m.num}</div>`:''}`;
+  document.getElementById('es-resp').value='';
+  document.getElementById('es-motivo').value='';
+  document.getElementById('es-motivo-custom').value='';
+  document.getElementById('es-motivo-custom').classList.add('hidden');
+  document.getElementById('modal-estorno').classList.remove('hidden');
+};
+
+window.toggleMotivoCustom=(v)=>{
+  document.getElementById('es-motivo-custom').classList.toggle('hidden',v!=='outro');
+};
+
+window.confirmarEstorno=async()=>{
+  const resp=document.getElementById('es-resp').value.trim();
+  const motivoSel=document.getElementById('es-motivo').value;
+  const motivoCustom=document.getElementById('es-motivo-custom').value.trim();
+  const motivo=motivoSel==='outro'?motivoCustom:motivoSel;
+  if(!resp){alert('Informe o responsável pelo estorno.');return;}
+  if(!motivo){alert('Informe o motivo do estorno.');return;}
+  const m=movs.find(m=>m._id===estornoDocId);if(!m)return;
+
+  // Marca a movimentação original como estornada
+  await updateDoc(doc(db,'movimentacoes',estornoDocId),{estornada:true,estornadoPor:resp,estornadoEm:new Date().toISOString(),motivoEstorno:motivo});
+
+  // Cria registro de estorno (inverso da movimentação original)
+  const estornoMov={data:new Date().toISOString().slice(0,10),produto:m.produto,tipo:'estorno',qtd:m.qtd,resp,motivo,refMovId:estornoDocId,criadoEm:new Date().toISOString()};
+  await addDoc(collection(db,'movimentacoes'),estornoMov);
+
+  // Reverte o estoque
+  const pi=produtos.findIndex(p=>p.nome===m.produto);
+  if(pi>=0){
+    const reverso=m.tipo==='entrada'?produtos[pi].qtd-m.qtd:produtos[pi].qtd+m.qtd;
+    await updateDoc(doc(db,'produtos',produtos[pi]._id),{qtd:Math.max(0,reverso)});
+  }
+
+  // Remove do histórico se era saída
+  if(m.tipo==='saida'){
+    const hEntry=historico.find(h=>h.movId===estornoDocId);
+    if(hEntry) await deleteDoc(doc(db,'historico',hEntry._id));
+  }
+
+  await registrarLog('estorno',`Estorno de ${m.tipo}: ${m.produto} (${m.qtd} un.) — Motivo: ${motivo}`,resp,{movOriginal:m,motivo});
+  fecharModal('modal-estorno');
+};
+
+// LOG DE AUDITORIA
+function renderLog(){
+  const lista=filtroLog?logs.filter(l=>l.responsavel?.toLowerCase().includes(filtroLog.toLowerCase())):logs;
+  const iconMap={add:'add',edit:'edit',del:'del',estorno:'estorno',mov:'mov'};
+  const labelMap={add:'Cadastro',edit:'Edição',del:'Exclusão',estorno:'Estorno',mov:'Movimentação'};
+  document.getElementById('log-list').innerHTML=lista.length===0
+    ?'<div style="text-align:center;padding:40px;color:#888780">Nenhum registro</div>'
+    :lista.map(l=>`<div class="log-row">
+        <div class="log-icon ${iconMap[l.tipo]||'mov'}">${l.tipo==='add'?'+':l.tipo==='edit'?'✎':l.tipo==='del'?'×':l.tipo==='estorno'?'↩':'⇄'}</div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:12px">${l.descricao}</div>
+          <div class="log-time">Por <strong>${l.responsavel||'?'}</strong> · ${l.tsLocal?new Date(l.tsLocal).toLocaleString('pt-BR'):''} · <span style="color:#888780">${labelMap[l.tipo]||l.tipo}</span></div>
+        </div>
+      </div>`).join('');
+}
+window.filtrarLog=v=>{filtroLog=v;renderLog()};
+
+/* OCR TESSERACT — MULTI-FORMATO */
+window.onDragOver=e=>{e.preventDefault();document.getElementById('drop-zone').classList.add('drag')};
+window.onDragLeave=()=>document.getElementById('drop-zone').classList.remove('drag');
+window.onDrop=e=>{e.preventDefault();window.onDragLeave();handleFiles(e.dataTransfer.files)};
+
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    if(document.querySelector(`script[src="${src}"]`)){res();return;}
+    const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);
+  });
+}
+
+const EXTS_OK=['jpg','jpeg','png','webp','bmp','tiff','tif','heic','heif','pdf'];
+
+window.handleFiles=files=>{
+  [...files].forEach(file=>{
+    const ext=file.name.split('.').pop().toLowerCase();
+    if(!EXTS_OK.includes(ext)){alert(`Formato não suportado: ${file.name}\nFormatos aceitos: JPG, PNG, WEBP, BMP, TIFF, HEIC, PDF.`);return;}
+    if(file.size>20*1024*1024){alert('Arquivo muito grande (máx 20MB).');return;}
+    const id='n'+Date.now()+Math.random().toString(36).slice(2);
+    if(ext==='pdf') processPDF(file,id);
+    else if(ext==='heic'||ext==='heif') processHEIC(file,id);
+    else{
+      const reader=new FileReader();
+      reader.onload=ev=>{
+        const dataUrl=ev.target.result;
+        notas.push({id,name:file.name,type:file.type,size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
+        renderNotas();runOCR(id,dataUrl,file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+};
+
+function criarBox(id,icon,fileName){
+  const area=document.getElementById('ocr-area');
+  const box=document.createElement('div');
+  box.id='ocrbox-'+id;box.className='ocr-box';
+  box.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+    <div id="thumb-${id}" style="width:52px;height:52px;background:#f5f5f3;border-radius:6px;border:1px solid #e8e8e0;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;overflow:hidden;cursor:pointer" onclick="abrirPreview('${id}')">${icon}</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:600">${fileName}</div>
+      <div id="ocr-sub-${id}" style="font-size:11px;color:#888780">Processando...</div>
+      <div class="progress-wrap"><div class="progress-fill" id="prog-${id}" style="width:5%"></div></div>
+    </div>
+  </div>
+  <div class="ocr-status running" id="ocr-st-${id}"><span class="spin">↻</span>&nbsp; Aguardando...</div>
+  <div id="ocr-res-${id}"></div>`;
+  area.prepend(box);
+}
+
+async function processPDF(file,id){
+  criarBox(id,'📄',file.name);
+  const setSub=t=>{const el=document.getElementById('ocr-sub-'+id);if(el)el.textContent=t;};
+  const setProg=p=>{const el=document.getElementById('prog-'+id);if(el)el.style.width=p+'%';};
+  const setSt=(cls,txt)=>{const el=document.getElementById('ocr-st-'+id);if(el){el.className='ocr-status '+cls;el.innerHTML=txt;}};
+  setSt('running','<span class="spin">↻</span>&nbsp; Carregando motor PDF...');
+  const reader=new FileReader();
+  reader.onload=async ev=>{
+    const dataUrl=ev.target.result;
+    notas.push({id,name:file.name,type:'application/pdf',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:true});
+    renderNotas();
+    try{
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      setSub('Renderizando página do PDF...');setProg(25);
+      const raw=atob(dataUrl.split(',')[1]);
+      const arr=new Uint8Array(raw.length);
+      for(let i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+      const pdf=await pdfjsLib.getDocument({data:arr}).promise;
+      setSub(`PDF com ${pdf.numPages} página(s) — lendo pág. 1...`);setProg(40);
+      const page=await pdf.getPage(1);
+      const vp=page.getViewport({scale:2.5});
+      const canvas=document.createElement('canvas');
+      canvas.width=vp.width;canvas.height=vp.height;
+      await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+      const imgUrl=canvas.toDataURL('image/png');
+      const thumb=document.getElementById('thumb-'+id);
+      if(thumb)thumb.innerHTML=`<img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover">`;
+      const n=notas.find(n=>n.id===id);if(n)n.pdfThumb=imgUrl;
+      renderNotas();setProg(60);setSub('Executando OCR...');
+      setSt('running','<span class="spin">↻</span>&nbsp; Lendo texto da nota (OCR)...');
+      runOCR(id,imgUrl,file.name);
+    }catch(e){
+      setSt('error','Erro ao processar PDF. Tente converter para JPG.');console.error(e);
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function processHEIC(file,id){
+  criarBox(id,'📱',file.name);
+  const setSub=t=>{const el=document.getElementById('ocr-sub-'+id);if(el)el.textContent=t;};
+  const setSt=(cls,txt)=>{const el=document.getElementById('ocr-st-'+id);if(el){el.className='ocr-status '+cls;el.innerHTML=txt;}};
+  setSt('running','<span class="spin">↻</span>&nbsp; Convertendo foto do iPhone (HEIC)...');
+  setSub('Convertendo...');
+  createImageBitmap(file).then(bitmap=>{
+    const canvas=document.createElement('canvas');
+    canvas.width=bitmap.width;canvas.height=bitmap.height;
+    canvas.getContext('2d').drawImage(bitmap,0,0);
+    const dataUrl=canvas.toDataURL('image/jpeg',0.92);
+    const thumb=document.getElementById('thumb-'+id);
+    if(thumb)thumb.innerHTML=`<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover">`;
+    notas.push({id,name:file.name,type:'image/jpeg',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
+    renderNotas();setSub('Conversão ok. Iniciando OCR...');runOCR(id,dataUrl,file.name);
+  }).catch(()=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      const canvas=document.createElement('canvas');
+      canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
+      canvas.getContext('2d').drawImage(img,0,0);
+      const dataUrl=canvas.toDataURL('image/jpeg',0.92);
+      notas.push({id,name:file.name,type:'image/jpeg',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
+      renderNotas();setSub('Conversão ok. Iniciando OCR...');runOCR(id,dataUrl,file.name);
+      URL.revokeObjectURL(url);
+    };
+    img.onerror=()=>setSt('error','HEIC não suportado. Salve como JPG no iPhone e envie novamente.');
+    img.src=url;
+  });
+}
+
+function runOCR(id,dataUrl,fileName){
+  if(!document.getElementById('ocrbox-'+id)) criarBox(id,'🖼',fileName);
+  const setSt=(cls,txt)=>{const el=document.getElementById('ocr-st-'+id);if(el){el.className='ocr-status '+cls;el.innerHTML=txt;}};
+  setSt('running','<span class="spin">↻</span>&nbsp; Lendo nota com OCR gratuito (Tesseract.js)...');
+  // Atualiza thumb se ainda for ícone
+  const thumb=document.getElementById('thumb-'+id);
+  if(thumb&&!thumb.querySelector('img'))thumb.innerHTML=`<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover">`;
+  if(!window.Tesseract){
+    loadScript('https://unpkg.com/tesseract.js@5.0.4/dist/tesseract.min.js').then(()=>doRecognize(id,dataUrl,fileName));
+  } else doRecognize(id,dataUrl,fileName);
+}
+
+function doRecognize(id,dataUrl,fileName){
+  Tesseract.recognize(dataUrl,'por+eng',{
+    logger:m=>{
+      if(m.status==='recognizing text'){
+        const p=Math.round(m.progress*100);
+        const el=document.getElementById('prog-'+id);if(el)el.style.width=p+'%';
+        const sub=document.getElementById('ocr-sub-'+id);if(sub)sub.textContent=`Reconhecendo... ${p}%`;
+      }
+    }
+  }).then(({data:{text}})=>{
+    const ocr=parseNotaText(text);
+    ocr._notaName=fileName;
+    const n=notas.find(n=>n.id===id);if(n)n.ocrData=ocr;
+    renderNotas();
+    const st=document.getElementById('ocr-st-'+id);
+    st.className='ocr-status done';st.innerHTML='✓ OCR concluído';
+    document.getElementById('prog-'+id)?.parentElement?.remove();
+    const sub=document.getElementById('ocr-sub-'+id);if(sub)sub.textContent='Leitura completa';
+    const temDados=ocr.fornecedor||ocr.cnpj||ocr.numero||ocr.data||ocr.produto||ocr.quantidade;
+    const campos=temDados?[
+      ocr.fornecedor&&`<div class="ocr-field"><span class="ocr-field-label">Fornecedor</span><span class="ocr-field-value">${ocr.fornecedor}</span></div>`,
+      ocr.cnpj&&`<div class="ocr-field"><span class="ocr-field-label">CNPJ</span><span class="ocr-field-value">${ocr.cnpj}</span></div>`,
+      ocr.numero&&`<div class="ocr-field"><span class="ocr-field-label">Nº da nota</span><span class="ocr-field-value">${ocr.numero}</span></div>`,
+      ocr.data&&`<div class="ocr-field"><span class="ocr-field-label">Data</span><span class="ocr-field-value">${ocr.data}</span></div>`,
+    ].filter(Boolean).join(''):'';
+    document.getElementById('ocr-res-'+id).innerHTML=temDados
+      ?`<div class="ocr-result" style="margin-top:10px"><div class="ocr-result-title">Dados extraídos</div>${campos}</div>
+         <div style="display:flex;gap:8px;margin-top:10px">
+           <button class="btn primary" onclick="abrirModalMov(notas.find(n=>n.id==='${id}').ocrData)">Registrar movimentação</button>
+           <button class="btn sm" onclick="abrirPreview('${id}')">Ver imagem</button>
+           <button class="btn danger sm" onclick="removerNota('${id}')">Excluir</button>
+         </div>`
+      :`<div style="font-size:12px;color:#888780;padding:8px;background:#fafaf8;border-radius:6px;margin-top:8px">Nenhum dado extraído. Preencha manualmente.</div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn sm" onclick="abrirModalMov(null)">Preencher manualmente</button>
+          <button class="btn danger sm" onclick="removerNota('${id}')">Excluir</button>
+        </div>`;
+  }).catch(()=>{
+    const st=document.getElementById('ocr-st-'+id);
+    if(st){st.className='ocr-status error';st.innerHTML='Erro ao processar. Tente com uma imagem mais nítida.';}
+  });
+}
+
+function parseNotaText(text){
+  const r={};
+  const cnpjM=text.match(/\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2}/);
+  if(cnpjM)r.cnpj=cnpjM[0].replace(/\s/g,'');
+  const nfM=text.match(/(?:NF|N\.F\.|NOTA FISCAL|NF-e|N[oº]\.?\s*)[\s\-\:]?(\d{3,9})/i);
+  if(nfM)r.numero='NF-'+nfM[1];
+  const dateM=text.match(/(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{2,4})/);
+  if(dateM){const y=dateM[3].length===2?'20'+dateM[3]:dateM[3];r.data=`${y}-${dateM[2]}-${dateM[1]}`;}
+  const qtdM=text.match(/(?:qtd|quantidade|quant|qtde)[\s\:\.\-]*(\d+[\.,]?\d*)/i);
+  if(qtdM)r.quantidade=qtdM[1].replace(',','.');
+  const linhas=text.split('\n').map(l=>l.trim()).filter(l=>l.length>4);
+  const fornM=linhas.find(l=>/ltda|s\.a\.|s\/a|eireli|me\b|epp\b|distribui|comercial|qu[ií]mica|agro/i.test(l));
+  if(fornM)r.fornecedor=fornM.replace(/[^\w\sáàâãéèêíïóôõöúçñA-Z\.]/gi,'').trim().slice(0,60);
+  const prodM=linhas.find(l=>/ciperm|deltam|brodif|bromar|imida|máscara|luva|bomba|inset|roden|fungic/i.test(l));
+  if(prodM)r.produto=prodM.slice(0,50);
+  return r;
+}
+
+window.renderNotas=()=>{
+  document.getElementById('notas-count').textContent=`${notas.length} arquivo${notas.length!==1?'s':''}`;
+  const wrap=document.getElementById('notas-galeria-wrap');
+  if(notas.length===0){wrap.classList.add('hidden');return;}
+  wrap.classList.remove('hidden');
+  document.getElementById('notas-grid').innerHTML=notas.map(n=>`
+    <div class="nota-card">
+      <div class="nota-thumb" onclick="abrirPreview('${n.id}')">${n.isPdf?(n.pdfThumb?`<img src="${n.pdfThumb}">`:'📄'):`<img src="${n.dataUrl}">`}</div>
+      <div class="nota-foot">
+        <div class="nota-fname">${n.name}</div>
+        <div class="nota-fmeta">${formatBytes(n.size)} · ${n.date}${n.ocrData?` · <span style="color:#0F6E56;font-weight:600">OCR ✓</span>`:''}</div>
+        <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
+          ${n.ocrData?`<button class="btn sm" onclick="abrirModalMov(notas.find(x=>x.id==='${n.id}').ocrData)" style="font-size:10px">Registrar</button>`:''}
+          <button class="btn danger sm" onclick="removerNota('${n.id}')" style="font-size:10px">Excluir</button>
+        </div>
+      </div>
+    </div>`).join('');
+};
+window.removerNota=id=>{notas=notas.filter(n=>n.id!==id);document.getElementById('ocrbox-'+id)?.remove();window.renderNotas();};
+function formatBytes(b){if(b<1024)return b+'B';if(b<1048576)return Math.round(b/1024)+'KB';return(b/1048576).toFixed(1)+'MB'}
+
+window.abrirPreview=id=>{
+  const n=notas.find(n=>n.id===id);if(!n)return;
+  document.getElementById('preview-title').textContent=n.name;
+  const img=document.getElementById('preview-img');
+  if(n.isPdf&&n.pdfThumb){img.src=n.pdfThumb;img.style.display='block';}
+  else if(!n.isPdf){img.src=n.dataUrl;img.style.display='block';}
+  else{img.style.display='none';}
+  const od=document.getElementById('preview-ocr');
+  if(n.ocrData){const o=n.ocrData;od.innerHTML=`<div class="ocr-result"><div class="ocr-result-title">Dados OCR</div>${o.fornecedor?`<div class="ocr-field"><span class="ocr-field-label">Fornecedor</span><span class="ocr-field-value">${o.fornecedor}</span></div>`:''}${o.cnpj?`<div class="ocr-field"><span class="ocr-field-label">CNPJ</span><span class="ocr-field-value">${o.cnpj}</span></div>`:''}${o.numero?`<div class="ocr-field"><span class="ocr-field-label">Nº</span><span class="ocr-field-value">${o.numero}</span></div>`:''}${o.data?`<div class="ocr-field"><span class="ocr-field-label">Data</span><span class="ocr-field-value">${o.data}</span></div>`:''}</div>`;}
+  else od.innerHTML='';
+  document.getElementById('preview-overlay').classList.remove('hidden');
+};
+
+function renderHist(){
+  const n=parseInt(document.getElementById('sel-hist')?.value||6);
+  const now=new Date();const meses=[];
+  for(let i=n-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);meses.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);}
+  const data=historico.filter(h=>meses.includes(h.mes));
+  const total=data.reduce((a,h)=>a+h.qtd,0);
+  document.getElementById('cards-hist').innerHTML=`
+    <div class="card"><div class="card-label">Total consumido</div><div class="card-value">${total}</div></div>
+    <div class="card"><div class="card-label">Média mensal</div><div class="card-value green">${Math.round(total/meses.length)||0}</div></div>
+    <div class="card"><div class="card-label">Meses</div><div class="card-value">${meses.length}</div></div>
+    <div class="card"><div class="card-label">Registros</div><div class="card-value">${data.length}</div></div>`;
+  document.getElementById('tbody-hist').innerHTML=data.length===0
+    ?'<tr><td colspan="5" style="text-align:center;padding:20px;color:#888780">Nenhum registro no período</td></tr>'
+    :data.map(h=>{const[y,mo]=h.mes.split('-');return`<tr><td>${MESES[+mo-1]}/${y}</td><td style="font-weight:600">${h.produto}</td><td>${catBadge(h.cat)}</td><td style="color:#0F6E56;font-weight:600">${h.qtd}</td><td style="color:#888780">${h.resp}</td></tr>`;}).join('');
+}
+window.renderHist=renderHist;
+
+function renderAlertas(){
+  const al=produtos.filter(p=>p.qtd<p.min);
+  document.getElementById('content-alertas').innerHTML=al.length===0
+    ?'<div style="text-align:center;padding:40px;color:#888780">Nenhum alerta. Estoque em dia!</div>'
+    :al.map(p=>`<div class="alert-item ${p.qtd===0?'critical':''}">
+        <div><div style="font-size:13px;font-weight:600">${p.nome}</div>
+        <div style="font-size:11px;color:#888780">${p.cat} · Atual: ${p.qtd} ${p.un} · Mín: ${p.min} ${p.un}</div></div>
+        <span class="badge ${p.qtd===0?'out':'low'}">${p.qtd===0?'Zerado':'Baixo'}</span>
+      </div>`).join('');
+}
+window.renderAlertas=renderAlertas;
+
+window.fecharModal=id=>document.getElementById(id).classList.add('hidden');
+document.querySelectorAll('.modal-overlay').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.add('hidden')}));
+document.getElementById('preview-overlay').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.add('hidden')});
+</script>
+</body>
+</html>
