@@ -316,7 +316,7 @@ const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','
 const CAT_BADGE={'Inseticida':'ins','Rodenticida':'rod','EPI':'epi','Equipamento':'eqp','Fungicida':'ins'};
 
 let produtos=[], movs=[], historico=[], logs=[];
-let notas=[];
+window.notas=[];
 let filtroEst='', catEst='', filtroLog='';
 let editDocId=null, estornoDocId=null;
 
@@ -642,7 +642,7 @@ window.handleFiles=files=>{
       const reader=new FileReader();
       reader.onload=ev=>{
         const dataUrl=ev.target.result;
-        notas.push({id,name:file.name,type:file.type,size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
+        window.notas.push({id,name:file.name,type:file.type,size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
         renderNotas();runOCR(id,dataUrl,file.name);
       };
       reader.readAsDataURL(file);
@@ -676,7 +676,7 @@ async function processPDF(file,id){
   const reader=new FileReader();
   reader.onload=async ev=>{
     const dataUrl=ev.target.result;
-    notas.push({id,name:file.name,type:'application/pdf',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:true});
+    window.notas.push({id,name:file.name,type:'application/pdf',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:true});
     renderNotas();
     try{
       await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
@@ -695,7 +695,7 @@ async function processPDF(file,id){
       const imgUrl=canvas.toDataURL('image/png');
       const thumb=document.getElementById('thumb-'+id);
       if(thumb)thumb.innerHTML=`<img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover">`;
-      const n=notas.find(n=>n.id===id);if(n)n.pdfThumb=imgUrl;
+      const n=window.notas.find(n=>n.id===id);if(n)n.pdfThumb=imgUrl;
       renderNotas();setProg(60);setSub('Executando OCR...');
       setSt('running','<span class="spin">↻</span>&nbsp; Lendo texto da nota (OCR)...');
       runOCR(id,imgUrl,file.name);
@@ -719,7 +719,7 @@ function processHEIC(file,id){
     const dataUrl=canvas.toDataURL('image/jpeg',0.92);
     const thumb=document.getElementById('thumb-'+id);
     if(thumb)thumb.innerHTML=`<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover">`;
-    notas.push({id,name:file.name,type:'image/jpeg',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
+    window.notas.push({id,name:file.name,type:'image/jpeg',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
     renderNotas();setSub('Conversão ok. Iniciando OCR...');runOCR(id,dataUrl,file.name);
   }).catch(()=>{
     const url=URL.createObjectURL(file);
@@ -729,7 +729,7 @@ function processHEIC(file,id){
       canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
       canvas.getContext('2d').drawImage(img,0,0);
       const dataUrl=canvas.toDataURL('image/jpeg',0.92);
-      notas.push({id,name:file.name,type:'image/jpeg',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
+      window.notas.push({id,name:file.name,type:'image/jpeg',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
       renderNotas();setSub('Conversão ok. Iniciando OCR...');runOCR(id,dataUrl,file.name);
       URL.revokeObjectURL(url);
     };
@@ -762,7 +762,7 @@ function doRecognize(id,dataUrl,fileName){
   }).then(({data:{text}})=>{
     const ocr=parseNotaText(text);
     ocr._notaName=fileName;
-    const n=notas.find(n=>n.id===id);if(n)n.ocrData=ocr;
+    const n=window.notas.find(n=>n.id===id);if(n)n.ocrData=ocr;
     renderNotas();
     const st=document.getElementById('ocr-st-'+id);
     st.className='ocr-status done';st.innerHTML='✓ OCR concluído';
@@ -778,7 +778,7 @@ function doRecognize(id,dataUrl,fileName){
     document.getElementById('ocr-res-'+id).innerHTML=temDados
       ?`<div class="ocr-result" style="margin-top:10px"><div class="ocr-result-title">Dados extraídos</div>${campos}</div>
          <div style="display:flex;gap:8px;margin-top:10px">
-           <button class="btn primary" onclick="abrirModalMov(notas.find(n=>n.id==='${id}').ocrData)">Registrar movimentação</button>
+           <button class="btn primary" onclick="abrirModalMov(window.notas.find(n=>n.id==='${id}').ocrData)">Registrar movimentação</button>
            <button class="btn sm" onclick="abrirPreview('${id}')">Ver imagem</button>
            <button class="btn danger sm" onclick="removerNota('${id}')">Excluir</button>
          </div>`
@@ -812,28 +812,28 @@ function parseNotaText(text){
 }
 
 window.renderNotas=()=>{
-  document.getElementById('notas-count').textContent=`${notas.length} arquivo${notas.length!==1?'s':''}`;
+  document.getElementById('notas-count').textContent=`${window.notas.length} arquivo${window.notas.length!==1?'s':''}`;
   const wrap=document.getElementById('notas-galeria-wrap');
-  if(notas.length===0){wrap.classList.add('hidden');return;}
+  if(window.notas.length===0){wrap.classList.add('hidden');return;}
   wrap.classList.remove('hidden');
-  document.getElementById('notas-grid').innerHTML=notas.map(n=>`
+  document.getElementById('notas-grid').innerHTML=window.notas.map(n=>`
     <div class="nota-card">
       <div class="nota-thumb" onclick="abrirPreview('${n.id}')">${n.isPdf?(n.pdfThumb?`<img src="${n.pdfThumb}">`:'📄'):`<img src="${n.dataUrl}">`}</div>
       <div class="nota-foot">
         <div class="nota-fname">${n.name}</div>
         <div class="nota-fmeta">${formatBytes(n.size)} · ${n.date}${n.ocrData?` · <span style="color:#0F6E56;font-weight:600">OCR ✓</span>`:''}</div>
         <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
-          ${n.ocrData?`<button class="btn sm" onclick="abrirModalMov(notas.find(x=>x.id==='${n.id}').ocrData)" style="font-size:10px">Registrar</button>`:''}
+          ${n.ocrData?`<button class="btn sm" onclick="abrirModalMov(window.notas.find(x=>x.id==='${n.id}').ocrData)" style="font-size:10px">Registrar</button>`:''}
           <button class="btn danger sm" onclick="removerNota('${n.id}')" style="font-size:10px">Excluir</button>
         </div>
       </div>
     </div>`).join('');
 };
-window.removerNota=id=>{notas=notas.filter(n=>n.id!==id);document.getElementById('ocrbox-'+id)?.remove();window.renderNotas();};
+window.removerNota=id=>{window.notas=window.notas.filter(n=>n.id!==id);document.getElementById('ocrbox-'+id)?.remove();window.renderNotas();};
 function formatBytes(b){if(b<1024)return b+'B';if(b<1048576)return Math.round(b/1024)+'KB';return(b/1048576).toFixed(1)+'MB'}
 
 window.abrirPreview=id=>{
-  const n=notas.find(n=>n.id===id);if(!n)return;
+  const n=window.notas.find(n=>n.id===id);if(!n)return;
   document.getElementById('preview-title').textContent=n.name;
   const img=document.getElementById('preview-img');
   if(n.isPdf&&n.pdfThumb){img.src=n.pdfThumb;img.style.display='block';}
