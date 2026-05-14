@@ -559,6 +559,8 @@ window.salvarNotaManual=async()=>{
   await registrarLog('mov',`Nota manual — ${tipo==='entrada'?'Entrada':'Saída'}: ${prod} (${qtd} un.) NF:${num}`,resp,mov);
   fecharModal('modal-nota-manual');
 };
+
+window.abrirModalMov=(ocr)=>{
   // Garante que há produtos cadastrados
   if(produtos.length===0){
     alert('Nenhum produto cadastrado no estoque.\nVá em Estoque → Novo produto e cadastre os produtos antes de registrar uma movimentação.');
