@@ -28,7 +28,10 @@ body{font-family:system-ui,sans-serif;background:#f5f5f3;color:#1a1a1a}
 .content{padding:16px 20px;flex:1}
 .hidden{display:none!important}
 .cards-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
-.card{background:#f5f5f3;border-radius:8px;padding:12px}
+.card{background:#f5f5f3;border-radius:8px;padding:12px;transition:all .15s}
+.card.clickable{cursor:pointer}
+.card.clickable:hover{background:#e8e8e0;transform:translateY(-1px)}
+.card.active-filter{outline:2px solid #1D9E75;background:#E1F5EE}
 .card-label{font-size:11px;color:#888780;margin-bottom:4px}
 .card-value{font-size:20px;font-weight:700;color:#1a1a1a}
 .card-value.green{color:#0F6E56}.card-value.amber{color:#BA7517}.card-value.red{color:#A32D2D}
@@ -144,9 +147,17 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
       <div class="header">
         <div><div class="page-title">Estoque</div><div class="page-sub">Produtos e equipamentos</div></div>
         <div style="display:flex;gap:8px;align-items:center">
-          <input class="inp" style="width:160px" placeholder="Buscar..." oninput="filtrarEst(this.value)">
-          <select class="inp" style="width:130px" onchange="filtrarCat(this.value)">
+          <input class="inp" style="width:150px" placeholder="Buscar..." oninput="filtrarEst(this.value)">
+          <select class="inp" style="width:120px" onchange="filtrarCat(this.value)">
             <option value="">Todas</option><option>Inseticida</option><option>Rodenticida</option><option>Fungicida</option><option>Equipamento</option><option>EPI</option>
+          </select>
+          <select class="inp" style="width:150px" onchange="setOrdem(this.value)">
+            <option value="nome_az">Nome A→Z</option>
+            <option value="nome_za">Nome Z→A</option>
+            <option value="qtd_asc">Menor quantidade</option>
+            <option value="qtd_desc">Maior quantidade</option>
+            <option value="status">Status</option>
+            <option value="cat">Categoria</option>
           </select>
           <button class="btn primary" onclick="abrirModalProd()">+ Novo produto</button>
         </div>
@@ -172,7 +183,10 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
     <div id="page-notas" class="hidden">
       <div class="header">
         <div><div class="page-title">Notas fiscais</div><div class="page-sub">Upload com OCR automático gratuito</div></div>
-        <span id="notas-count" style="font-size:11px;color:#888780">0 arquivos</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="notas-count" style="font-size:11px;color:#888780">0 arquivos</span>
+          <button class="btn primary" onclick="abrirModalNotaManual()">+ Lançar manualmente</button>
+        </div>
       </div>
       <div class="content">
         <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()" ondragover="onDragOver(event)" ondragleave="onDragLeave()" ondrop="onDrop(event)">
@@ -219,6 +233,24 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
         <div id="log-list"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- MODAL NOTA MANUAL -->
+<div id="modal-nota-manual" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title">Lançar nota fiscal manualmente</div>
+    <div class="form-row"><label>Produto</label><select class="inp" id="nm-prod" style="width:100%"></select></div>
+    <div class="form-grid">
+      <div class="form-row"><label>Tipo</label><select class="inp" id="nm-tipo"><option value="entrada">Entrada</option><option value="saida">Saída</option></select></div>
+      <div class="form-row"><label>Quantidade</label><input class="inp" id="nm-qtd" type="number" min="1"></div>
+      <div class="form-row"><label>Nº da Nota</label><input class="inp" id="nm-num" placeholder="Ex: 000368870"></div>
+      <div class="form-row"><label>Data da Nota</label><input class="inp" id="nm-data" type="date"></div>
+      <div class="form-row" style="grid-column:1/-1"><label>Fornecedor</label><input class="inp" id="nm-forn" placeholder="Nome do fornecedor"></div>
+      <div class="form-row"><label>CNPJ do Fornecedor</label><input class="inp" id="nm-cnpj" placeholder="00.000.000/0000-00"></div>
+      <div class="form-row"><label>Responsável</label><input class="inp" id="nm-resp" placeholder="Seu nome"></div>
+    </div>
+    <div class="modal-actions"><button class="btn" onclick="fecharModal('modal-nota-manual')">Cancelar</button><button class="btn primary" onclick="salvarNotaManual()">Salvar</button></div>
   </div>
 </div>
 
@@ -317,7 +349,7 @@ const CAT_BADGE={'Inseticida':'ins','Rodenticida':'rod','EPI':'epi','Equipamento
 
 let produtos=[], movs=[], historico=[], logs=[];
 window.notas=[];
-let filtroEst='', catEst='', filtroLog='';
+let filtroEst='', catEst='', filtroLog='', filtroStatus='', ordemEst='nome_az';
 let editDocId=null, estornoDocId=null;
 
 function setSyncStatus(state){
@@ -380,14 +412,28 @@ function statusP(p){
 function catBadge(c){return`<span class="badge ${CAT_BADGE[c]||'ins'}">${c}</span>`}
 
 function renderEst(){
-  const list=produtos.filter(p=>p.nome.toLowerCase().includes(filtroEst.toLowerCase())&&(catEst===''||p.cat===catEst));
+  let list=produtos.filter(p=>p.nome.toLowerCase().includes(filtroEst.toLowerCase())&&(catEst===''||p.cat===catEst));
+  // Filtro de status por card clicado
+  if(filtroStatus==='low') list=list.filter(p=>p.qtd>0&&p.qtd<p.min);
+  else if(filtroStatus==='zer') list=list.filter(p=>p.qtd===0);
+  // Ordenação
+  const ordemFn={
+    nome_az:(a,b)=>a.nome.localeCompare(b.nome),
+    nome_za:(a,b)=>b.nome.localeCompare(a.nome),
+    qtd_asc:(a,b)=>a.qtd-b.qtd,
+    qtd_desc:(a,b)=>b.qtd-a.qtd,
+    status:(a,b)=>{const s=p=>(p.qtd===0?2:p.qtd<p.min?1:0);return s(b)-s(a);},
+    cat:(a,b)=>a.cat.localeCompare(b.cat),
+  };
+  list.sort(ordemFn[ordemEst]||ordemFn.nome_az);
+
   const tot=produtos.length,ok=produtos.filter(p=>p.qtd>=p.min&&p.qtd>0).length;
   const low=produtos.filter(p=>p.qtd>0&&p.qtd<p.min).length,zer=produtos.filter(p=>p.qtd===0).length;
   document.getElementById('cards-est').innerHTML=`
     <div class="card"><div class="card-label">Total de itens</div><div class="card-value">${tot}</div></div>
     <div class="card"><div class="card-label">Estoque OK</div><div class="card-value green">${ok}</div></div>
-    <div class="card"><div class="card-label">Estoque baixo</div><div class="card-value amber">${low}</div></div>
-    <div class="card"><div class="card-label">Zerados</div><div class="card-value red">${zer}</div></div>`;
+    <div class="card clickable ${filtroStatus==='low'?'active-filter':''}" onclick="toggleFiltroStatus('low')"><div class="card-label">Estoque baixo ${filtroStatus==='low'?'✕':''}</div><div class="card-value amber">${low}</div></div>
+    <div class="card clickable ${filtroStatus==='zer'?'active-filter':''}" onclick="toggleFiltroStatus('zer')"><div class="card-label">Zerados ${filtroStatus==='zer'?'✕':''}</div><div class="card-value red">${zer}</div></div>`;
   document.getElementById('tbody-est').innerHTML=list.length===0
     ?'<tr><td colspan="7" style="text-align:center;padding:20px;color:#888780">Nenhum produto</td></tr>'
     :list.map(p=>`<tr>
@@ -402,6 +448,8 @@ function renderEst(){
   const nb=document.getElementById('nbadge');
   nb.textContent=al||'';nb.style.display=al?'inline':'none';
 }
+window.toggleFiltroStatus=v=>{filtroStatus=filtroStatus===v?'':v;renderEst();};
+window.setOrdem=v=>{ordemEst=v;renderEst();};
 window.filtrarEst=v=>{filtroEst=v;renderEst()};
 window.filtrarCat=v=>{catEst=v;renderEst()};
 
@@ -448,13 +496,20 @@ window.remProd=async(id,nome)=>{
   await registrarLog('del',`Produto excluído: ${nome}`,resp,{motivo,produto:p});
 };
 
+function formatDate(d){
+  if(!d)return'—';
+  // Accepts YYYY-MM-DD or DD/MM/YYYY
+  if(d.includes('-')){const[y,m,dd]=d.split('-');return`${dd}/${m}/${y}`;}
+  return d;
+}
+
 function renderMovs(){
   document.getElementById('tbody-mov').innerHTML=movs.length===0
     ?'<tr><td colspan="9" style="text-align:center;padding:20px;color:#888780">Nenhuma movimentação</td></tr>'
     :movs.map(m=>{
       const estornada=m.estornada===true;
       return`<tr class="${estornada?'estornada':''}">
-        <td>${m.data}</td><td style="font-weight:600">${m.produto}</td>
+        <td>${formatDate(m.data)}</td><td style="font-weight:600">${m.produto}</td>
         <td><span class="badge ${m.tipo==='entrada'?'ent':m.tipo==='estorno'?'est':'sai'}">${m.tipo==='entrada'?'Entrada':m.tipo==='estorno'?'Estorno':'Saída'}</span></td>
         <td>${m.qtd}</td>
         <td style="color:#888780">${m.forn||'—'}</td>
@@ -474,7 +529,36 @@ function renderMovs(){
     }).join('');
 }
 
-window.abrirModalMov=(ocr)=>{
+window.abrirModalNotaManual=()=>{
+  if(produtos.length===0){alert('Cadastre produtos no estoque antes de lançar uma nota.');return;}
+  document.getElementById('nm-prod').innerHTML=produtos.map(p=>`<option value="${p.nome}">${p.nome}</option>`).join('');
+  document.getElementById('nm-data').value=new Date().toISOString().slice(0,10);
+  ['nm-qtd','nm-resp','nm-forn','nm-cnpj','nm-num'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('nm-tipo').value='entrada';
+  document.getElementById('modal-nota-manual').classList.remove('hidden');
+};
+
+window.salvarNotaManual=async()=>{
+  const prod=document.getElementById('nm-prod').value;
+  const tipo=document.getElementById('nm-tipo').value;
+  const qtd=+document.getElementById('nm-qtd').value||0;
+  const resp=document.getElementById('nm-resp').value.trim();
+  const num=document.getElementById('nm-num').value.trim();
+  if(!qtd||!resp){alert('Preencha quantidade e responsável.');return;}
+  if(!num){alert('Informe o número da nota fiscal.');return;}
+  const pi=produtos.findIndex(p=>p.nome===prod);
+  if(pi>=0){
+    const novaQtd=tipo==='entrada'?produtos[pi].qtd+qtd:Math.max(0,produtos[pi].qtd-qtd);
+    await updateDoc(doc(db,'produtos',produtos[pi]._id),{qtd:novaQtd});
+  }
+  const mov={data:document.getElementById('nm-data').value,produto:prod,tipo,qtd,resp,forn:document.getElementById('nm-forn').value,cnpj:document.getElementById('nm-cnpj').value,num,estornada:false,criadoEm:new Date().toISOString(),origem:'manual'};
+  const ref=await addDoc(collection(db,'movimentacoes'),mov);
+  if(tipo==='saida'&&pi>=0){
+    await addDoc(collection(db,'historico'),{mes:mov.data.slice(0,7),produto:prod,cat:produtos[pi].cat,qtd,resp,movId:ref.id});
+  }
+  await registrarLog('mov',`Nota manual — ${tipo==='entrada'?'Entrada':'Saída'}: ${prod} (${qtd} un.) NF:${num}`,resp,mov);
+  fecharModal('modal-nota-manual');
+};
   // Garante que há produtos cadastrados
   if(produtos.length===0){
     alert('Nenhum produto cadastrado no estoque.\nVá em Estoque → Novo produto e cadastre os produtos antes de registrar uma movimentação.');
