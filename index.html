@@ -130,19 +130,6 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
 .toast.error{background:#E24B4A;color:#fff}
 .toast.warning{background:#EF9F27;color:#fff}
 @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-/* Login screen */
-#login-screen{position:fixed;inset:0;background:#f5f5f3;display:flex;align-items:center;justify-content:center;z-index:100}
-.login-box{background:#fff;border-radius:14px;border:1px solid #e8e8e0;padding:32px 36px;width:360px;max-width:90vw}
-.login-logo{text-align:center;margin-bottom:24px}
-.login-logo-title{font-size:18px;font-weight:700;color:#1a1a1a}
-.login-logo-sub{font-size:12px;color:#888780;margin-top:3px}
-.login-error{background:#FCEBEB;color:#A32D2D;border-radius:7px;padding:8px 12px;font-size:12px;margin-bottom:12px}
-.pw-wrap{position:relative}
-.pw-wrap .inp{padding-right:36px}
-.pw-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#888780;font-size:14px;border:none;background:none;padding:0;line-height:1}
-.pw-toggle:hover{color:#1a1a1a}
-/* Loading overlay */
-#auth-loading{position:fixed;inset:0;background:#f5f5f3;display:flex;align-items:center;justify-content:center;z-index:99;flex-direction:column;gap:12px;color:#888780;font-size:13px}
 /* Validade warning inline */
 .val-warn{font-size:10px;font-weight:600;margin-left:6px;padding:1px 5px;border-radius:4px}
 .val-warn.venc{background:#FCEBEB;color:#A32D2D}
@@ -151,40 +138,10 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
 </head>
 <body>
 
-<!-- AUTH LOADING -->
-<div id="auth-loading">
-  <div class="spin" style="font-size:24px">↻</div>
-  <div>Verificando sessão...</div>
-</div>
-
-<!-- LOGIN SCREEN -->
-<div id="login-screen" class="hidden">
-  <div class="login-box">
-    <div class="login-logo">
-      <div style="font-size:28px;margin-bottom:8px">🔒</div>
-      <div class="login-logo-title">KR Desinsetização</div>
-      <div class="login-logo-sub">Sistema de Estoque — Acesso restrito</div>
-    </div>
-    <div id="login-error" class="login-error hidden"></div>
-    <div class="form-row">
-      <label>E-mail</label>
-      <input class="inp" id="login-email" type="email" placeholder="seu@email.com" autocomplete="email" style="width:100%">
-    </div>
-    <div class="form-row">
-      <label>Senha</label>
-      <div class="pw-wrap">
-        <input class="inp" id="login-senha" type="password" placeholder="••••••••" autocomplete="current-password" style="width:100%" onkeydown="if(event.key==='Enter')fazerLogin()">
-        <button class="pw-toggle" onclick="toggleSenha()" type="button" id="pw-toggle-btn">👁</button>
-      </div>
-    </div>
-    <button class="btn primary" id="login-btn" onclick="fazerLogin()" style="width:100%;padding:9px;font-size:13px;margin-top:4px">Entrar</button>
-  </div>
-</div>
-
 <!-- TOAST CONTAINER -->
 <div id="toast-container"></div>
 
-<div id="app-root" class="app hidden">
+<div id="app-root" class="app">
   <div class="sidebar">
     <div class="logo">
       <div class="logo-title">KR Desinsetização</div>
@@ -199,9 +156,6 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
     <div class="nav-item" onclick="navTo('historico',this)"><span class="nav-icon">↗</span> Histórico</div>
     <div class="nav-item" onclick="navTo('alertas',this)"><span class="nav-icon">⚠</span> Alertas <span class="nav-badge" id="nbadge"></span></div>
     <div class="nav-item" onclick="navTo('auditoria',this)"><span class="nav-icon">🔒</span> Auditoria</div>
-    <div class="nav-sep"></div>
-    <div class="nav-user"><span>👤</span><div><div><strong id="user-email-label">—</strong></div></div></div>
-    <div class="nav-item" onclick="fazerLogout()" style="color:#E24B4A"><span class="nav-icon">↩</span> Sair</div>
   </div>
 
   <div class="main">
@@ -399,7 +353,6 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDt7Jr4kTyWmK-l5zcOw6xxDm2Cu_vmxk0",
@@ -412,7 +365,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app);
 
 /* ───── TOAST ───── */
 window.toast = (msg, tipo='success', dur=3000) => {
@@ -424,54 +376,6 @@ window.toast = (msg, tipo='success', dur=3000) => {
   setTimeout(() => t.remove(), dur);
 };
 
-/* ───── AUTH ───── */
-window.fazerLogin = async () => {
-  const email = document.getElementById('login-email').value.trim();
-  const senha = document.getElementById('login-senha').value;
-  const err = document.getElementById('login-error');
-  const btn = document.getElementById('login-btn');
-  if (!email || !senha) { err.textContent='Preencha e-mail e senha.'; err.classList.remove('hidden'); return; }
-  btn.disabled = true; btn.textContent = 'Entrando...';
-  try {
-    await setPersistence(auth, browserLocalPersistence);
-    await signInWithEmailAndPassword(auth, email, senha);
-    err.classList.add('hidden');
-  } catch(e) {
-    const msgs = {'auth/wrong-password':'E-mail ou senha incorretos.','auth/user-not-found':'E-mail ou senha incorretos.','auth/invalid-credential':'E-mail ou senha incorretos.','auth/invalid-email':'E-mail inválido.','auth/network-request-failed':'Erro de conexão. Verifique a internet.'};
-    err.textContent = msgs[e.code] || 'Erro ao entrar. Tente novamente.';
-    err.classList.remove('hidden');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Entrar';
-  }
-};
-
-window.fazerLogout = async () => {
-  if (!confirm('Deseja sair do sistema?')) return;
-  await signOut(auth);
-};
-
-window.toggleSenha = () => {
-  const inp = document.getElementById('login-senha');
-  const btn = document.getElementById('pw-toggle-btn');
-  inp.type = inp.type === 'password' ? 'text' : 'password';
-  btn.textContent = inp.type === 'password' ? '👁' : '🙈';
-};
-
-// Listener de sessão — fonte de verdade para exibir login ou app
-onAuthStateChanged(auth, user => {
-  document.getElementById('auth-loading').classList.add('hidden');
-  if (user) {
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('user-email-label').textContent = user.email;
-    iniciarApp();
-  } else {
-    document.getElementById('app-root').classList.add('hidden');
-    document.getElementById('login-screen').classList.remove('hidden');
-    // Para os listeners do Firestore se existirem
-    unsubscribeAll();
-  }
-});
-
 /* ───── FIRESTORE LISTENERS ───── */
 const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const CAT_BADGE={'Inseticida':'ins','Rodenticida':'rod','EPI':'epi','Equipamento':'eqp','Fungicida':'ins'};
@@ -480,35 +384,27 @@ let produtos=[], movs=[], historico=[], logs=[];
 window.notas=[];
 let filtroEst='', catEst='', filtroLog='', filtroStatus='', ordemEst='nome_az';
 let editDocId=null, estornoDocId=null;
-let unsubs=[];
 
-function unsubscribeAll() { unsubs.forEach(u=>u()); unsubs=[]; }
+onSnapshot(collection(db,'produtos'),(snap)=>{
+  produtos=snap.docs.map(d=>({...d.data(),_id:d.id}));
+  renderEst();
+  setSyncStatus('online');
+},(err)=>{setSyncStatus('offline');console.error(err);});
 
-function iniciarApp() {
-  if (unsubs.length > 0) return; // já iniciado
-  document.getElementById('app-root').classList.remove('hidden');
+onSnapshot(query(collection(db,'movimentacoes'),orderBy('data','desc')),(snap)=>{
+  movs=snap.docs.map(d=>({...d.data(),_id:d.id}));
+  renderMovs();
+});
 
-  unsubs.push(onSnapshot(collection(db,'produtos'),(snap)=>{
-    produtos=snap.docs.map(d=>({...d.data(),_id:d.id}));
-    renderEst();
-    setSyncStatus('online');
-  },(err)=>{setSyncStatus('offline');console.error(err);}));
+onSnapshot(query(collection(db,'historico'),orderBy('mes','desc')),(snap)=>{
+  historico=snap.docs.map(d=>({...d.data(),_id:d.id}));
+  renderHist();
+});
 
-  unsubs.push(onSnapshot(query(collection(db,'movimentacoes'),orderBy('data','desc')),(snap)=>{
-    movs=snap.docs.map(d=>({...d.data(),_id:d.id}));
-    renderMovs();
-  }));
-
-  unsubs.push(onSnapshot(query(collection(db,'historico'),orderBy('mes','desc')),(snap)=>{
-    historico=snap.docs.map(d=>({...d.data(),_id:d.id}));
-    renderHist();
-  }));
-
-  unsubs.push(onSnapshot(query(collection(db,'auditoria'),orderBy('tsLocal','desc')),(snap)=>{
-    logs=snap.docs.map(d=>({...d.data(),_id:d.id}));
-    renderLog();
-  }));
-}
+onSnapshot(query(collection(db,'auditoria'),orderBy('tsLocal','desc')),(snap)=>{
+  logs=snap.docs.map(d=>({...d.data(),_id:d.id}));
+  renderLog();
+});
 
 function setSyncStatus(state){
   const el=document.getElementById('sync-status');
