@@ -269,7 +269,7 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
       <div class="form-row"><label>Responsável *</label><input class="inp" id="nfc-resp" placeholder="Seu nome"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn" onclick="fecharModal('modal-nf-cabecalho')">Cancelar</button>
+      <button class="btn danger" onclick="cancelarNF()">Cancelar nota</button>
       <button class="btn primary" onclick="avancarParaItens()">Próximo — Adicionar produtos →</button>
     </div>
   </div>
@@ -277,15 +277,21 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
 
 <!-- MODAL NF — ETAPA 2: ITENS -->
 <div id="modal-nf-itens" class="modal-overlay hidden">
-  <div class="modal" style="width:620px">
-    <div class="modal-title">Nova nota fiscal — Produtos</div>
+  <div class="modal" style="width:640px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div class="modal-title" style="margin-bottom:0">Nova nota fiscal — Produtos</div>
+      <span id="nf-em-andamento-badge" style="background:#E6F1FB;color:#0C447C;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px">Em andamento</span>
+    </div>
     <!-- Resumo do cabeçalho -->
-    <div id="nfi-cabecalho-resumo" style="background:#f5f5f3;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;display:flex;gap:16px;flex-wrap:wrap"></div>
+    <div id="nfi-cabecalho-resumo" style="background:#f5f5f3;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;display:flex;gap:16px;flex-wrap:wrap;cursor:pointer" onclick="voltarParaCabecalho()" title="Clique para editar o cabeçalho"></div>
     <!-- Lista de itens adicionados -->
     <div id="nfi-lista" style="margin-bottom:12px"></div>
     <!-- Formulário para adicionar item -->
     <div style="border:1px solid #e8e8e0;border-radius:8px;padding:12px;background:#fafaf8">
-      <div style="font-size:11px;font-weight:600;color:#888780;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Adicionar produto</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:600;color:#888780;text-transform:uppercase;letter-spacing:.04em">Adicionar produto</div>
+        <button class="btn sm" onclick="abrirMiniProd()" style="font-size:11px;color:#1D9E75;border-color:#1D9E75">+ Produto novo</button>
+      </div>
       <div class="form-row"><label>Produto</label><select class="inp" id="nfi-prod" style="width:100%" onchange="atualizarUnNFI()"></select></div>
       <div class="form-grid">
         <div class="form-row"><label>Quantidade <span id="nfi-un-label" class="un-tag"></span></label><input class="inp" id="nfi-qtd" type="number" min="0.01" step="0.01" oninput="calcUnitNFI()"></div>
@@ -295,9 +301,30 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
       <button class="btn primary" onclick="adicionarItemNF()" style="width:100%;margin-top:4px">+ Adicionar produto à nota</button>
     </div>
     <div class="modal-actions" style="margin-top:12px">
-      <button class="btn" onclick="voltarParaCabecalho()">← Voltar</button>
-      <button class="btn" onclick="fecharModal('modal-nf-itens')">Cancelar</button>
+      <button class="btn danger" onclick="cancelarNF()">Cancelar nota</button>
+      <button class="btn" onclick="fecharModal('modal-nf-itens')">Minimizar ↓</button>
       <button class="btn primary" id="btn-salvar-nf" onclick="salvarNotaFiscal()" disabled>Salvar nota fiscal</button>
+    </div>
+  </div>
+</div>
+
+<!-- MINI MODAL — PRODUTO RÁPIDO (dentro do fluxo NF) -->
+<div id="modal-mini-prod" class="modal-overlay hidden">
+  <div class="modal" style="width:440px">
+    <div class="modal-title">Cadastrar novo produto</div>
+    <div style="font-size:12px;color:#888780;background:#E6F1FB;border-radius:6px;padding:8px 12px;margin-bottom:12px">
+      Após salvar, o produto aparecerá automaticamente na lista da nota.
+    </div>
+    <div class="form-grid">
+      <div class="form-row" style="grid-column:1/-1"><label>Nome *</label><input class="inp" id="mmp-nome"></div>
+      <div class="form-row"><label>Categoria</label><select class="inp" id="mmp-cat"><option>Inseticida</option><option>Rodenticida</option><option>Fungicida</option><option>Equipamento</option><option>EPI</option></select></div>
+      <div class="form-row"><label>Unidade</label><select class="inp" id="mmp-un"><option>L</option><option>mL</option><option>kg</option><option>g</option><option>un</option><option>cx</option></select></div>
+      <div class="form-row"><label>Qtd. mínima</label><input class="inp" id="mmp-min" type="number" min="0" value="0"></div>
+      <div class="form-row"><label>Validade (opcional)</label><input class="inp" id="mmp-validade" type="date"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharMiniProd()">Cancelar</button>
+      <button class="btn primary" onclick="salvarMiniProd()">Salvar e continuar nota</button>
     </div>
   </div>
 </div>
@@ -616,13 +643,43 @@ function renderMovs(){
 }
 
 /* ───── NF EM 2 ETAPAS ───── */
-let nfCabecalho = {}; // guarda dados do passo 1
-let nfItens = [];     // lista de produtos adicionados
+let nfCabecalho = {};
+let nfItens = [];
+let nfEmAndamento = false;
+
+// Indicador visual na sidebar/header quando NF em andamento
+function atualizarBadgeNF(){
+  const btn = document.querySelector('[onclick="abrirModalNotaManual()"]');
+  if(!btn) return;
+  if(nfEmAndamento){
+    btn.textContent = '✎ Nota em andamento';
+    btn.style.background = '#EF9F27';
+    btn.style.borderColor = '#EF9F27';
+  } else {
+    btn.textContent = '+ Lançar manualmente';
+    btn.style.background = '';
+    btn.style.borderColor = '';
+  }
+}
+
+window.cancelarNF = () => {
+  if(nfItens.length > 0 || nfEmAndamento){
+    if(!confirm('Cancelar esta nota? Os produtos adicionados serão perdidos.')) return;
+  }
+  nfCabecalho = {}; nfItens = []; nfEmAndamento = false;
+  fecharModal('modal-nf-cabecalho');
+  fecharModal('modal-nf-itens');
+  atualizarBadgeNF();
+};
 
 window.abrirModalNotaManual = () => {
   if(produtos.length===0){toast('Cadastre produtos antes de lançar uma nota.','error');return;}
-  nfCabecalho = {};
-  nfItens = [];
+  // Se tem NF em andamento, reabre no passo 2
+  if(nfEmAndamento){
+    reabrirItens();
+    return;
+  }
+  nfCabecalho = {}; nfItens = [];
   document.getElementById('nfc-data').value = new Date().toISOString().slice(0,10);
   ['nfc-num','nfc-forn','nfc-cnpj','nfc-resp'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('nfc-tipo').value = 'entrada';
@@ -637,31 +694,36 @@ window.avancarParaItens = () => {
   if(!num){toast('Informe o número da nota.','error');return;}
   if(!forn){toast('Informe o fornecedor.','error');return;}
   if(!resp){toast('Informe o responsável.','error');return;}
-  nfCabecalho = {
-    num, forn, resp, data,
-    cnpj: document.getElementById('nfc-cnpj').value.trim(),
-    tipo: document.getElementById('nfc-tipo').value
-  };
+  nfCabecalho = {num, forn, resp, data, cnpj:document.getElementById('nfc-cnpj').value.trim(), tipo:document.getElementById('nfc-tipo').value};
+  nfEmAndamento = true;
+  atualizarBadgeNF();
   fecharModal('modal-nf-cabecalho');
-  // Preenche resumo do cabeçalho no passo 2
+  reabrirItens();
+};
+
+function reabrirItens(){
+  // Atualiza resumo do cabeçalho
   document.getElementById('nfi-cabecalho-resumo').innerHTML = `
-    <span><strong>NF:</strong> ${num}</span>
-    <span><strong>Fornecedor:</strong> ${forn}</span>
-    <span><strong>Data:</strong> ${formatDate(data)}</span>
+    <span><strong>NF:</strong> ${nfCabecalho.num}</span>
+    <span><strong>Fornecedor:</strong> ${nfCabecalho.forn}</span>
+    <span><strong>Data:</strong> ${formatDate(nfCabecalho.data)}</span>
     <span><strong>Tipo:</strong> ${nfCabecalho.tipo==='entrada'?'Entrada':'Saída'}</span>
-    <span><strong>Resp.:</strong> ${resp}</span>`;
-  // Preenche select de produtos
-  document.getElementById('nfi-prod').innerHTML = produtos.map(p=>`<option value="${p.nome}">${p.nome}</option>`).join('');
+    <span><strong>Resp.:</strong> ${nfCabecalho.resp}</span>
+    <span style="color:#1D9E75;font-size:11px">✎ clique para editar</span>`;
+  // Atualiza select de produtos
+  const sel = document.getElementById('nfi-prod');
+  const atual = sel.value;
+  sel.innerHTML = produtos.map(p=>`<option value="${p.nome}">${p.nome}</option>`).join('');
+  if(atual) sel.value = atual;
   ['nfi-qtd','nfi-valor-total'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('nfi-valor-unit').textContent = 'R$ 0,00';
   atualizarUnNFI();
   renderListaItensNF();
   document.getElementById('modal-nf-itens').classList.remove('hidden');
-};
+}
 
 window.voltarParaCabecalho = () => {
   fecharModal('modal-nf-itens');
-  // Restaura valores
   document.getElementById('nfc-num').value = nfCabecalho.num||'';
   document.getElementById('nfc-forn').value = nfCabecalho.forn||'';
   document.getElementById('nfc-resp').value = nfCabecalho.resp||'';
@@ -679,8 +741,7 @@ window.atualizarUnNFI = () => {
 window.calcUnitNFI = () => {
   const q = parseFloat(document.getElementById('nfi-qtd').value)||0;
   const t = parseFloat(document.getElementById('nfi-valor-total').value)||0;
-  const unit = q > 0 ? t/q : 0;
-  document.getElementById('nfi-valor-unit').textContent = fmtBRL(unit);
+  document.getElementById('nfi-valor-unit').textContent = fmtBRL(q > 0 ? t/q : 0);
 };
 
 window.adicionarItemNF = () => {
@@ -700,14 +761,19 @@ function renderListaItensNF(){
   const el = document.getElementById('nfi-lista');
   const btn = document.getElementById('btn-salvar-nf');
   if(nfItens.length===0){
-    el.innerHTML = '<div style="font-size:12px;color:#888780;padding:8px;text-align:center">Nenhum produto adicionado ainda.</div>';
-    btn.disabled = true;
-    return;
+    el.innerHTML = '<div style="font-size:12px;color:#888780;padding:8px;text-align:center;background:#fafaf8;border-radius:6px">Nenhum produto adicionado ainda.</div>';
+    btn.disabled = true; return;
   }
   btn.disabled = false;
-  el.innerHTML = `<div style="border:1px solid #e8e8e0;border-radius:8px;overflow:hidden;margin-bottom:8px">
+  el.innerHTML = `<div style="border:1px solid #e8e8e0;border-radius:8px;overflow:hidden;margin-bottom:4px">
     <table style="width:100%;font-size:12px;border-collapse:collapse">
-      <thead><tr style="background:#f5f5f3"><th style="padding:6px 10px;text-align:left;font-weight:600;color:#888780">Produto</th><th style="padding:6px 10px;text-align:right;color:#888780">Qtd.</th><th style="padding:6px 10px;text-align:right;color:#888780">Unit.</th><th style="padding:6px 10px;text-align:right;color:#888780">Total</th><th style="padding:6px 10px"></th></tr></thead>
+      <thead><tr style="background:#f5f5f3">
+        <th style="padding:6px 10px;text-align:left;color:#888780">Produto</th>
+        <th style="padding:6px 10px;text-align:right;color:#888780">Qtd.</th>
+        <th style="padding:6px 10px;text-align:right;color:#888780">Unit.</th>
+        <th style="padding:6px 10px;text-align:right;color:#888780">Total</th>
+        <th style="padding:6px 10px"></th>
+      </tr></thead>
       <tbody>${nfItens.map((it,i)=>`<tr style="border-top:1px solid #f0f0e8">
         <td style="padding:6px 10px;font-weight:600">${it.prod}</td>
         <td style="padding:6px 10px;text-align:right">${it.qtd}</td>
@@ -737,13 +803,52 @@ window.salvarNotaFiscal = async () => {
     const mov = {data,produto:item.prod,tipo,qtd:item.qtd,resp,forn,cnpj,num,valorUnit:item.valorUnit,valorTotal:item.valorTotal,estornada:false,criadoEm:new Date().toISOString(),origem:'nf-manual'};
     const ref = await addDoc(collection(db,'movimentacoes'),mov);
     if(tipo==='saida'&&pi>=0){
-      await addDoc(collection(db,'historico'),{mes:data.slice(0,7),produto:item.prod,cat:produtos[pi>=0?pi:0]?.cat||'',qtd:item.qtd,resp,movId:ref.id});
+      await addDoc(collection(db,'historico'),{mes:data.slice(0,7),produto:item.prod,cat:produtos[pi]?.cat||'',qtd:item.qtd,resp,movId:ref.id});
     }
   }
-  await registrarLog('mov',`NF ${num} lançada — ${nfItens.length} produto(s) — ${tipo==='entrada'?'Entrada':'Saída'} — Forn: ${forn}`,resp,{cabecalho:nfCabecalho,itens:nfItens});
+  await registrarLog('mov',`NF ${num} — ${nfItens.length} produto(s) — ${tipo==='entrada'?'Entrada':'Saída'} — ${forn}`,resp,{cabecalho:nfCabecalho,itens:nfItens});
   fecharModal('modal-nf-itens');
   toast(`NF ${num} salva — ${nfItens.length} produto(s) lançado(s).`);
-  nfItens = []; nfCabecalho = {};
+  nfItens = []; nfCabecalho = {}; nfEmAndamento = false;
+  atualizarBadgeNF();
+};
+
+/* ───── MINI MODAL PRODUTO (dentro do fluxo NF) ───── */
+window.abrirMiniProd = () => {
+  ['mmp-nome','mmp-min','mmp-validade'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('mmp-cat').value = 'Inseticida';
+  document.getElementById('mmp-un').value = 'L';
+  document.getElementById('modal-mini-prod').classList.remove('hidden');
+};
+
+window.fecharMiniProd = () => {
+  fecharModal('modal-mini-prod');
+};
+
+window.salvarMiniProd = async () => {
+  const nome = document.getElementById('mmp-nome').value.trim();
+  if(!nome){toast('Informe o nome do produto.','error');return;}
+  const obj = {
+    nome,
+    cat: document.getElementById('mmp-cat').value,
+    un: document.getElementById('mmp-un').value,
+    qtd: 0,
+    min: +document.getElementById('mmp-min').value||0,
+    validade: document.getElementById('mmp-validade').value||''
+  };
+  await addDoc(collection(db,'produtos'),obj);
+  await registrarLog('add',`Produto cadastrado via NF: ${nome}`, nfCabecalho.resp||'—', obj);
+  fecharModal('modal-mini-prod');
+  toast(`Produto "${nome}" cadastrado! Selecione-o na lista.`);
+  // O onSnapshot vai atualizar produtos[] e reabrirItens vai atualizar o select
+  setTimeout(()=>{
+    const sel = document.getElementById('nfi-prod');
+    if(sel){
+      sel.innerHTML = produtos.map(p=>`<option value="${p.nome}">${p.nome}</option>`).join('');
+      sel.value = nome;
+      atualizarUnNFI();
+    }
+  }, 800);
 };
 
 /* ───── MODAL MOV (OCR) ───── */
