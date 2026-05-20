@@ -916,19 +916,23 @@ window.salvarEmprestimo = async () => {
   if(!func){toast('Informe o nome do funcionário.','error');return;}
   if(!qtd){toast('Informe a quantidade.','error');return;}
   const pi = produtos.findIndex(p=>p.nome===nomeProd);
-  if(pi>=0 && produtos[pi].qtd < qtd){
-    toast(`Estoque insuficiente. Disponível: ${produtos[pi].qtd}.`,'error');return;
+  const estoqueAtual = pi>=0 ? (produtos[pi].qtd||0) : 0;
+
+  // Se tem estoque, baixa. Se já está zerado (equipamento já em campo antes do sistema), registra sem baixar
+  if(pi>=0 && estoqueAtual > 0){
+    const novaQtd = Math.max(0, estoqueAtual - qtd);
+    await updateDoc(doc(db,'produtos',produtos[pi]._id),{qtd: novaQtd});
   }
-  // Baixa do estoque e registra em campo
-  if(pi>=0) await updateDoc(doc(db,'produtos',produtos[pi]._id),{qtd: produtos[pi].qtd - qtd});
+  // Se estoque zerado, apenas registra — equipamento já estava em campo antes do sistema
   await addDoc(collection(db,'emprestimos'),{
     produto: nomeProd, qtd, funcionario: func,
     dataSaida: data, obs, status:'ativo',
+    retroativo: estoqueAtual === 0, // marca como retroativo para referência
     criadoEm: new Date().toISOString()
   });
-  await registrarLog('mov',`Empréstimo: ${nomeProd} (${qtd}) → ${func}`,func,{produto:nomeProd,qtd,funcionario:func});
+  await registrarLog('mov',`Empréstimo${estoqueAtual===0?' (retroativo)':''}: ${nomeProd} (${qtd}) → ${func}`,func,{produto:nomeProd,qtd,funcionario:func,retroativo:estoqueAtual===0});
   fecharModal('modal-emprestimo');
-  toast(`${nomeProd} registrado em campo com ${func}.`);
+  toast(`${nomeProd} registrado em campo com ${func}.${estoqueAtual===0?' (registro retroativo)':''}`);
 };
 
 window.abrirDevolucao = (empId) => {
