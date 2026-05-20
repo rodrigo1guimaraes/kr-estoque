@@ -151,6 +151,7 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
       <span class="spin">↻</span> Sincronizando...
     </div>
     <div class="nav-item active" onclick="navTo('estoque',this)"><span class="nav-icon">▦</span> Estoque</div>
+    <div class="nav-item" onclick="navTo('campo',this)"><span class="nav-icon">🔧</span> Em campo <span class="nav-badge" id="cbadge"></span></div>
     <div class="nav-item" onclick="navTo('movimentacoes',this)"><span class="nav-icon">⇄</span> Movimentações</div>
     <div class="nav-item" onclick="navTo('notas',this)"><span class="nav-icon">◈</span> Notas fiscais</div>
     <div class="nav-item" onclick="navTo('historico-nf',this)"><span class="nav-icon">🧾</span> Hist. de NFs <span style="font-size:10px;margin-left:auto">🔒</span></div>
@@ -193,6 +194,18 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
       <div class="content">
         <div class="cards-grid" id="cards-est"></div>
         <div class="tbl-wrap"><table><thead><tr><th>Produto</th><th>Categoria</th><th>Qtd.</th><th>Mín.</th><th>Un.</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead><tbody id="tbody-est"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- EM CAMPO -->
+    <div id="page-campo" class="hidden">
+      <div class="header">
+        <div><div class="page-title">Em campo</div><div class="page-sub">Equipamentos e EPIs atualmente com funcionários</div></div>
+        <button class="btn primary" onclick="abrirModalEmprestimo()">+ Registrar empréstimo</button>
+      </div>
+      <div class="content">
+        <div class="cards-grid" id="cards-campo"></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Produto</th><th>Qtd.</th><th>Funcionário</th><th>Data saída</th><th>Observação</th><th>Ação</th></tr></thead><tbody id="tbody-campo"></tbody></table></div>
       </div>
     </div>
 
@@ -459,6 +472,54 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
   </div>
 </div>
 
+<!-- MODAL EMPRÉSTIMO -->
+<div id="modal-emprestimo" class="modal-overlay hidden">
+  <div class="modal" style="width:500px">
+    <div class="modal-title">Registrar empréstimo</div>
+    <div style="background:#E6F1FB;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#0C447C">
+      📦 O equipamento não sairá do estoque — ficará registrado como "Em campo" até a devolução.
+    </div>
+    <div class="form-row"><label>Equipamento / EPI</label>
+      <select class="inp" id="emp-prod" style="width:100%" onchange="atualizarUnEmp()"></select>
+    </div>
+    <div class="form-grid">
+      <div class="form-row"><label>Quantidade <span id="emp-un-label" class="un-tag"></span></label><input class="inp" id="emp-qtd" type="number" min="1" value="1"></div>
+      <div class="form-row"><label>Data</label><input class="inp" id="emp-data" type="date"></div>
+      <div class="form-row" style="grid-column:1/-1"><label>Funcionário responsável *</label><input class="inp" id="emp-func" placeholder="Nome do funcionário"></div>
+      <div class="form-row" style="grid-column:1/-1"><label>Observação (opcional)</label><input class="inp" id="emp-obs" placeholder="Ex: Serviço em Laguna, bomba nova"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharModal('modal-emprestimo')">Cancelar</button>
+      <button class="btn primary" onclick="salvarEmprestimo()">Registrar saída para campo</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DEVOLUÇÃO -->
+<div id="modal-devolucao" class="modal-overlay hidden">
+  <div class="modal" style="width:500px">
+    <div class="modal-title">Registrar devolução</div>
+    <div id="dev-info" style="background:#f5f5f3;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px"></div>
+    <div class="form-grid">
+      <div class="form-row"><label>Quantidade devolvida</label><input class="inp" id="dev-qtd" type="number" min="1"></div>
+      <div class="form-row"><label>Data devolução</label><input class="inp" id="dev-data" type="date"></div>
+      <div class="form-row" style="grid-column:1/-1"><label>Estado do equipamento</label>
+        <select class="inp" id="dev-estado">
+          <option value="Bom estado">Bom estado</option>
+          <option value="Com desgaste">Com desgaste</option>
+          <option value="Necessita manutenção">Necessita manutenção</option>
+          <option value="Danificado">Danificado</option>
+        </select>
+      </div>
+      <div class="form-row" style="grid-column:1/-1"><label>Observação (opcional)</label><input class="inp" id="dev-obs" placeholder="Ex: Bomba com vazamento na mangueira"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharModal('modal-devolucao')">Cancelar</button>
+      <button class="btn primary" onclick="salvarDevolucao()">Confirmar devolução</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
@@ -489,7 +550,7 @@ window.toast = (msg, tipo='success', dur=3000) => {
 const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const CAT_BADGE={'Inseticida':'ins','Rodenticida':'rod','EPI':'epi','Equipamento':'eqp','Fungicida':'ins'};
 
-let produtos=[], movs=[], historico=[], logs=[];
+let produtos=[], movs=[], historico=[], logs=[], emprestimos=[];
 window.notas=[];
 let filtroEst='', catEst='', filtroLog='', filtroStatus='', ordemEst='nome_az';
 let editDocId=null, estornoDocId=null;
@@ -497,8 +558,14 @@ let editDocId=null, estornoDocId=null;
 onSnapshot(collection(db,'produtos'),(snap)=>{
   produtos=snap.docs.map(d=>({...d.data(),_id:d.id}));
   renderEst();
+  renderCampo();
   setSyncStatus('online');
 },(err)=>{setSyncStatus('offline');console.error(err);});
+
+onSnapshot(query(collection(db,'emprestimos'),orderBy('dataSaida','desc')),(snap)=>{
+  emprestimos=snap.docs.map(d=>({...d.data(),_id:d.id}));
+  renderCampo();
+});
 
 onSnapshot(query(collection(db,'movimentacoes'),orderBy('data','desc')),(snap)=>{
   movs=snap.docs.map(d=>({...d.data(),_id:d.id}));
@@ -556,6 +623,7 @@ window.navTo=(page,el)=>{
   if(page==='historico-nf')renderHistNF();
   if(page==='notas')renderNotas();
   if(page==='auditoria')renderLog();
+  if(page==='campo')renderCampo();
 };
 
 /* ───── HISTÓRICO DE NFs ───── */
@@ -766,9 +834,14 @@ function renderEst(){
     :list.map(p=>{
       const vs = validadeStatus(p.validade);
       const valdTag = vs==='vencido'?'<span class="val-warn venc">VENCIDO</span>':vs==='proximo'?'<span class="val-warn prox">30 dias</span>':'';
+      // Qtd em campo para este produto
+      const emCampo = emprestimos.filter(e=>e.produto===p.nome&&e.status==='ativo').reduce((a,e)=>a+(e.qtd||0),0);
+      const qtdInfo = emCampo>0
+        ? `<span style="font-weight:600;color:${p.qtd===0?'#A32D2D':p.qtd<p.min?'#BA7517':'inherit'}">${p.qtd}</span><span style="font-size:10px;color:#854F0B;margin-left:4px">(+${emCampo} em campo)</span>`
+        : `<span style="font-weight:600;color:${p.qtd===0?'#A32D2D':p.qtd<p.min?'#BA7517':'inherit'}">${p.qtd}</span>`;
       return`<tr>
       <td style="font-weight:600">${p.nome}</td><td>${catBadge(p.cat)}</td>
-      <td style="font-weight:600;color:${p.qtd===0?'#A32D2D':p.qtd<p.min?'#BA7517':'inherit'}">${p.qtd}</td>
+      <td>${qtdInfo}</td>
       <td>${p.min}</td><td style="color:#888780">${p.un}</td>
       <td style="font-size:11px;color:#888780">${p.validade?formatDate(p.validade)+''+valdTag:'—'}</td>
       <td>${statusP(p)}</td>
@@ -776,8 +849,7 @@ function renderEst(){
         <button class="btn sm" onclick="abrirUltimaCompra('${p.nome.replace(/'/g,"\\'")}')">🛒</button>
         ${estoqueLiberado?`
         <button class="btn sm" onclick="editarProd('${p._id}')">Editar</button>
-        <button class="btn danger sm" onclick="remProd('${p._id}','${p.nome}')">Excluir</button>`
-        :''}
+        <button class="btn danger sm" onclick="remProd('${p._id}','${p.nome}')">Excluir</button>`:''}
       </div></td></tr>`;
     }).join('');
   const al=produtos.filter(p=>p.qtd<p.min||validadeStatus(p.validade)==='vencido').length;
@@ -787,6 +859,116 @@ function renderEst(){
 window.toggleFiltroStatus=v=>{filtroStatus=filtroStatus===v?'':v;renderEst();};
 window.setOrdem=v=>{ordemEst=v;renderEst();};
 window.filtrarEst=v=>{filtroEst=v;renderEst()};
+
+/* ───── EM CAMPO ───── */
+function renderCampo(){
+  const ativos = emprestimos.filter(e=>e.status==='ativo');
+  const cb = document.getElementById('cbadge');
+  if(cb){cb.textContent=ativos.length||'';cb.style.display=ativos.length?'inline':'none';}
+  const cards = document.getElementById('cards-campo');
+  const tbody = document.getElementById('tbody-campo');
+  if(!cards||!tbody) return;
+  const totalItens = ativos.reduce((a,e)=>a+(e.qtd||0),0);
+  const funcs = [...new Set(ativos.map(e=>e.funcionario))].length;
+  const prods = [...new Set(ativos.map(e=>e.produto))].length;
+  cards.innerHTML=`
+    <div class="card"><div class="card-label">Itens em campo</div><div class="card-value amber">${totalItens}</div></div>
+    <div class="card"><div class="card-label">Funcionários</div><div class="card-value">${funcs}</div></div>
+    <div class="card"><div class="card-label">Produtos diferentes</div><div class="card-value">${prods}</div></div>
+    <div class="card"><div class="card-label">Registros ativos</div><div class="card-value green">${ativos.length}</div></div>`;
+  tbody.innerHTML = ativos.length===0
+    ?'<tr><td colspan="6" style="text-align:center;padding:20px;color:#888780">Nenhum equipamento em campo.</td></tr>'
+    :ativos.map(e=>`<tr>
+      <td style="font-weight:600">${e.produto}</td>
+      <td>${e.qtd}</td>
+      <td style="font-weight:600;color:#854F0B">${e.funcionario}</td>
+      <td style="color:#888780">${formatDate(e.dataSaida)}</td>
+      <td style="color:#888780;font-size:11px">${e.obs||'—'}</td>
+      <td><button class="btn primary sm" onclick="abrirDevolucao('${e._id}')">Devolver</button></td>
+    </tr>`).join('');
+}
+window.renderCampo = renderCampo;
+
+let devEmpId = null;
+
+window.abrirModalEmprestimo = () => {
+  if(produtos.length===0){toast('Cadastre produtos antes de registrar empréstimo.','error');return;}
+  document.getElementById('emp-prod').innerHTML = produtos.map(p=>`<option value="${p.nome}">${p.nome} (${p.qtd} em estoque)</option>`).join('');
+  document.getElementById('emp-data').value = new Date().toISOString().slice(0,10);
+  document.getElementById('emp-qtd').value = '1';
+  ['emp-func','emp-obs'].forEach(id=>document.getElementById(id).value='');
+  atualizarUnEmp();
+  document.getElementById('modal-emprestimo').classList.remove('hidden');
+};
+
+window.atualizarUnEmp = () => {
+  const nome = document.getElementById('emp-prod').value.split(' (')[0];
+  const prod = produtos.find(p=>p.nome===nome);
+  document.getElementById('emp-un-label').textContent = prod ? prod.un : '';
+};
+
+window.salvarEmprestimo = async () => {
+  const nomeProd = document.getElementById('emp-prod').value.split(' (')[0];
+  const qtd = parseInt(document.getElementById('emp-qtd').value)||0;
+  const func = document.getElementById('emp-func').value.trim();
+  const data = document.getElementById('emp-data').value;
+  const obs = document.getElementById('emp-obs').value.trim();
+  if(!func){toast('Informe o nome do funcionário.','error');return;}
+  if(!qtd){toast('Informe a quantidade.','error');return;}
+  const pi = produtos.findIndex(p=>p.nome===nomeProd);
+  if(pi>=0 && produtos[pi].qtd < qtd){
+    toast(`Estoque insuficiente. Disponível: ${produtos[pi].qtd}.`,'error');return;
+  }
+  // Baixa do estoque e registra em campo
+  if(pi>=0) await updateDoc(doc(db,'produtos',produtos[pi]._id),{qtd: produtos[pi].qtd - qtd});
+  await addDoc(collection(db,'emprestimos'),{
+    produto: nomeProd, qtd, funcionario: func,
+    dataSaida: data, obs, status:'ativo',
+    criadoEm: new Date().toISOString()
+  });
+  await registrarLog('mov',`Empréstimo: ${nomeProd} (${qtd}) → ${func}`,func,{produto:nomeProd,qtd,funcionario:func});
+  fecharModal('modal-emprestimo');
+  toast(`${nomeProd} registrado em campo com ${func}.`);
+};
+
+window.abrirDevolucao = (empId) => {
+  const e = emprestimos.find(e=>e._id===empId);
+  if(!e) return;
+  devEmpId = empId;
+  document.getElementById('dev-info').innerHTML = `
+    <div style="font-weight:600;margin-bottom:4px">${e.produto}</div>
+    <div style="color:#888780">Com: <strong>${e.funcionario}</strong> · Saiu em: ${formatDate(e.dataSaida)} · Qtd: ${e.qtd}</div>
+    ${e.obs?`<div style="color:#888780;margin-top:2px">Obs: ${e.obs}</div>`:''}`;
+  document.getElementById('dev-qtd').value = e.qtd;
+  document.getElementById('dev-data').value = new Date().toISOString().slice(0,10);
+  document.getElementById('dev-estado').value = 'Bom estado';
+  document.getElementById('dev-obs').value = '';
+  document.getElementById('modal-devolucao').classList.remove('hidden');
+};
+
+window.salvarDevolucao = async () => {
+  const e = emprestimos.find(e=>e._id===devEmpId);
+  if(!e) return;
+  const qtdDev = parseInt(document.getElementById('dev-qtd').value)||0;
+  const estado = document.getElementById('dev-estado').value;
+  const obs = document.getElementById('dev-obs').value.trim();
+  const data = document.getElementById('dev-data').value;
+  if(!qtdDev){toast('Informe a quantidade devolvida.','error');return;}
+  // Devolve ao estoque
+  const pi = produtos.findIndex(p=>p.nome===e.produto);
+  if(pi>=0) await updateDoc(doc(db,'produtos',produtos[pi]._id),{qtd: produtos[pi].qtd + qtdDev});
+  // Fecha o empréstimo (ou atualiza parcial)
+  const qtdRestante = (e.qtd||0) - qtdDev;
+  if(qtdRestante <= 0){
+    await updateDoc(doc(db,'emprestimos',devEmpId),{status:'devolvido',dataRetorno:data,estado,obsRetorno:obs});
+  } else {
+    await updateDoc(doc(db,'emprestimos',devEmpId),{qtd:qtdRestante});
+    await addDoc(collection(db,'emprestimos'),{...e,_id:undefined,qtd:qtdDev,status:'devolvido',dataRetorno:data,estado,obsRetorno:obs});
+  }
+  await registrarLog('mov',`Devolução: ${e.produto} (${qtdDev}) de ${e.funcionario} — ${estado}`,e.funcionario,{produto:e.produto,qtd:qtdDev,estado,obs});
+  fecharModal('modal-devolucao');
+  toast(`${e.produto} devolvido. Estado: ${estado}.`);
+};
 
 /* ───── MODO EDIÇÃO ESTOQUE ───── */
 let estoqueLiberado = false;
