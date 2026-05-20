@@ -153,10 +153,10 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
     <div class="nav-item active" onclick="navTo('estoque',this)"><span class="nav-icon">▦</span> Estoque</div>
     <div class="nav-item" onclick="navTo('movimentacoes',this)"><span class="nav-icon">⇄</span> Movimentações</div>
     <div class="nav-item" onclick="navTo('notas',this)"><span class="nav-icon">◈</span> Notas fiscais</div>
-    <div class="nav-item" onclick="navTo('historico-nf',this)"><span class="nav-icon">🧾</span> Hist. de NFs</div>
+    <div class="nav-item" onclick="navTo('historico-nf',this)"><span class="nav-icon">🧾</span> Hist. de NFs <span style="font-size:10px;margin-left:auto">🔒</span></div>
     <div class="nav-item" onclick="navTo('historico',this)"><span class="nav-icon">↗</span> Histórico</div>
     <div class="nav-item" onclick="navTo('alertas',this)"><span class="nav-icon">⚠</span> Alertas <span class="nav-badge" id="nbadge"></span></div>
-    <div class="nav-item" onclick="navTo('auditoria',this)"><span class="nav-icon">🔒</span> Auditoria</div>
+    <div class="nav-item" onclick="navTo('auditoria',this)"><span class="nav-icon">🔒</span> Auditoria <span style="font-size:10px;margin-left:auto">🔒</span></div>
   </div>
 
   <div class="main">
@@ -423,6 +423,30 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
   </div>
 </div>
 
+<!-- MODAL EDITAR ITEM DA NF -->
+<div id="modal-editar-nf-item" class="modal-overlay hidden">
+  <div class="modal" style="width:520px">
+    <div class="modal-title">Editar item da nota fiscal</div>
+    <div style="background:#FFF8E8;border:1px solid #FAEEDA;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#854F0B">
+      ⚠ Apenas campos informativos (valores, fornecedor, CNPJ). Quantidade e estoque não são alterados. A edição fica registrada no log de auditoria.
+    </div>
+    <div id="edit-nf-info" style="background:#f5f5f3;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px"></div>
+    <div class="form-grid">
+      <div class="form-row"><label>Fornecedor</label><input class="inp" id="enf-forn"></div>
+      <div class="form-row"><label>CNPJ</label><input class="inp" id="enf-cnpj"></div>
+      <div class="form-row"><label>Nº da Nota</label><input class="inp" id="enf-num"></div>
+      <div class="form-row"><label>Data</label><input class="inp" id="enf-data" type="date"></div>
+      <div class="form-row"><label>Valor total do item (R$)</label><input class="inp" id="enf-valor-total" type="number" min="0" step="0.01" oninput="calcUnitENF()"></div>
+      <div class="form-row"><label>Valor unitário calculado</label><div class="valor-calc" id="enf-valor-unit">R$ 0,00</div></div>
+    </div>
+    <div class="form-row" style="margin-top:4px"><label>Responsável pela edição *</label><input class="inp" id="enf-resp" placeholder="Seu nome" style="width:100%"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharModal('modal-editar-nf-item')">Cancelar</button>
+      <button class="btn primary" onclick="salvarEdicaoNFItem()">Salvar edição</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
@@ -498,7 +522,19 @@ async function registrarLog(tipo, descricao, responsavel, dados={}){
 }
 
 /* ───── NAVEGAÇÃO ───── */
+const PAGINAS_PROTEGIDAS = ['auditoria','historico-nf'];
+const SENHA_ADMIN = '393700';
+let paginasLiberadas = new Set();
+
 window.navTo=(page,el)=>{
+  if(PAGINAS_PROTEGIDAS.includes(page) && !paginasLiberadas.has(page)){
+    const senha = prompt('🔒 Área restrita — digite a senha:');
+    if(senha !== SENHA_ADMIN){
+      if(senha !== null) toast('Senha incorreta.','error');
+      return;
+    }
+    paginasLiberadas.add(page);
+  }
   document.querySelectorAll('[id^=page-]').forEach(p=>p.classList.add('hidden'));
   document.getElementById('page-'+page).classList.remove('hidden');
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -545,13 +581,21 @@ window.renderHistNF = () => {
       </div>
       <div id="nfd-${g.num.replace(/\W/g,'_')}" style="display:none">
         <table style="width:100%;font-size:12px;border-collapse:collapse">
-          <thead><tr style="border-bottom:1px solid #e8e8e0"><th style="padding:7px 14px;text-align:left;color:#888780">Produto</th><th style="padding:7px 14px;text-align:right;color:#888780">Qtd.</th><th style="padding:7px 14px;text-align:right;color:#888780">Valor Unit.</th><th style="padding:7px 14px;text-align:right;color:#888780">Valor Total</th><th style="padding:7px 14px;text-align:left;color:#888780">Status</th></tr></thead>
+          <thead><tr style="border-bottom:1px solid #e8e8e0">
+            <th style="padding:7px 14px;text-align:left;color:#888780">Produto</th>
+            <th style="padding:7px 14px;text-align:right;color:#888780">Qtd.</th>
+            <th style="padding:7px 14px;text-align:right;color:#888780">Valor Unit.</th>
+            <th style="padding:7px 14px;text-align:right;color:#888780">Valor Total</th>
+            <th style="padding:7px 14px;text-align:left;color:#888780">Status</th>
+            <th style="padding:7px 14px"></th>
+          </tr></thead>
           <tbody>${g.itens.map(it=>`<tr class="${it.estornada?'estornada':''}" style="border-bottom:1px solid #f0f0e8">
             <td style="padding:7px 14px;font-weight:600">${it.produto}</td>
             <td style="padding:7px 14px;text-align:right">${it.qtd}</td>
-            <td style="padding:7px 14px;text-align:right;color:#888780">${it.valorUnit?fmtBRL(it.valorUnit):'—'}</td>
-            <td style="padding:7px 14px;text-align:right;font-weight:600;color:#0F6E56">${it.valorTotal?fmtBRL(it.valorTotal):'—'}</td>
+            <td style="padding:7px 14px;text-align:right;color:#888780">${it.valorUnit?fmtBRL(it.valorUnit):'<span style="color:#EF9F27;font-size:11px">— pendente</span>'}</td>
+            <td style="padding:7px 14px;text-align:right;font-weight:600;color:#0F6E56">${it.valorTotal?fmtBRL(it.valorTotal):'<span style="color:#EF9F27;font-size:11px">— pendente</span>'}</td>
             <td style="padding:7px 14px">${it.estornada?'<span style="color:#888780;font-size:11px">Estornado</span>':'<span class="badge ok">Ativo</span>'}</td>
+            <td style="padding:7px 14px">${!it.estornada?`<button class="btn sm" onclick="abrirEditarNFItem('${it._id}')">Editar</button>`:'—'}</td>
           </tr>`).join('')}</tbody>
         </table>
       </div>
@@ -560,6 +604,61 @@ window.renderHistNF = () => {
 window.toggleNFDetalhe = id => {
   const el = document.getElementById(id);
   if(el) el.style.display = el.style.display==='none' ? 'block' : 'none';
+};
+
+/* ───── EDITAR ITEM DA NF ───── */
+let editNFItemId = null;
+let editNFItemQtd = 0;
+
+window.abrirEditarNFItem = (movId) => {
+  const m = movs.find(m => m._id === movId);
+  if(!m) return;
+  editNFItemId = movId;
+  editNFItemQtd = m.qtd;
+  document.getElementById('edit-nf-info').innerHTML = `
+    <div style="font-weight:600;margin-bottom:4px">${m.produto}</div>
+    <div style="color:#888780">Qtd.: ${m.qtd} · Data: ${formatDate(m.data)} · NF: ${m.num||'—'}</div>`;
+  document.getElementById('enf-forn').value = m.forn||'';
+  document.getElementById('enf-cnpj').value = m.cnpj||'';
+  document.getElementById('enf-num').value = m.num||'';
+  document.getElementById('enf-data').value = m.data||'';
+  document.getElementById('enf-valor-total').value = m.valorTotal||'';
+  document.getElementById('enf-valor-unit').textContent = m.valorUnit ? fmtBRL(m.valorUnit) : 'R$ 0,00';
+  document.getElementById('enf-resp').value = '';
+  document.getElementById('modal-editar-nf-item').classList.remove('hidden');
+};
+
+window.calcUnitENF = () => {
+  const t = parseFloat(document.getElementById('enf-valor-total').value)||0;
+  const unit = editNFItemQtd > 0 ? t / editNFItemQtd : 0;
+  document.getElementById('enf-valor-unit').textContent = fmtBRL(unit);
+};
+
+window.salvarEdicaoNFItem = async () => {
+  const resp = document.getElementById('enf-resp').value.trim();
+  if(!resp){toast('Informe o responsável pela edição.','error');return;}
+  const m = movs.find(m => m._id === editNFItemId);
+  if(!m) return;
+  const valorTotal = parseFloat(document.getElementById('enf-valor-total').value)||0;
+  const valorUnit = editNFItemQtd > 0 ? valorTotal / editNFItemQtd : 0;
+  const atualizacoes = {
+    forn: document.getElementById('enf-forn').value.trim(),
+    cnpj: document.getElementById('enf-cnpj').value.trim(),
+    num:  document.getElementById('enf-num').value.trim(),
+    data: document.getElementById('enf-data').value,
+    valorTotal,
+    valorUnit,
+    editadoPor: resp,
+    editadoEm: new Date().toISOString()
+  };
+  await updateDoc(doc(db,'movimentacoes', editNFItemId), atualizacoes);
+  await registrarLog('edit',
+    `NF editada: ${m.produto} — NF ${atualizacoes.num||m.num} — Valor: ${fmtBRL(valorTotal)}`,
+    resp, {antes: m, depois: atualizacoes}
+  );
+  fecharModal('modal-editar-nf-item');
+  toast(`Item "${m.produto}" atualizado.`);
+  setTimeout(renderHistNF, 500);
 };
 
 /* ───── ÚLTIMA COMPRA DO PRODUTO ───── */
