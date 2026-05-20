@@ -357,8 +357,10 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
       <div class="form-row" style="grid-column:1/-1"><label>Nome</label><input class="inp" id="mp-nome"></div>
       <div class="form-row"><label>Categoria</label><select class="inp" id="mp-cat"><option>Inseticida</option><option>Rodenticida</option><option>Fungicida</option><option>Equipamento</option><option>EPI</option></select></div>
       <div class="form-row"><label>Unidade</label><select class="inp" id="mp-un"><option>L</option><option>mL</option><option>kg</option><option>g</option><option>un</option><option>cx</option></select></div>
-      <div class="form-row"><label>Qtd. atual</label><input class="inp" id="mp-qtd" type="number" min="0"></div>
+      <div class="form-row"><label>Qtd. atual</label><input class="inp" id="mp-qtd" type="number" min="0" oninput="calcTotalProd()"></div>
       <div class="form-row"><label>Qtd. mínima</label><input class="inp" id="mp-min" type="number" min="0"></div>
+      <div class="form-row"><label>Valor unitário (R$)</label><input class="inp" id="mp-valor-unit" type="number" min="0" step="0.01" placeholder="0,00" oninput="calcTotalProd()"></div>
+      <div class="form-row"><label>Valor total em estoque</label><div class="valor-calc" id="mp-valor-total">R$ 0,00</div></div>
       <div class="form-row" style="grid-column:1/-1"><label>Validade (opcional)</label><input class="inp" id="mp-validade" type="date"></div>
     </div>
     <div class="modal-actions"><button class="btn" onclick="fecharModal('modal-prod')">Cancelar</button><button class="btn primary" onclick="salvarProd()">Salvar</button></div>
@@ -814,10 +816,17 @@ window.bloquearEdicaoEstoque = () => {
 window.filtrarCat=v=>{catEst=v;renderEst()};
 
 /* ───── PRODUTO MODAL ───── */
+window.calcTotalProd = () => {
+  const q = parseFloat(document.getElementById('mp-qtd').value)||0;
+  const u = parseFloat(document.getElementById('mp-valor-unit').value)||0;
+  document.getElementById('mp-valor-total').textContent = fmtBRL(q*u);
+};
+
 window.abrirModalProd=()=>{
   editDocId=null;
   document.getElementById('mprod-titulo').textContent='Novo produto';
-  ['mp-nome','mp-qtd','mp-min','mp-validade'].forEach(id=>document.getElementById(id).value='');
+  ['mp-nome','mp-qtd','mp-min','mp-validade','mp-valor-unit'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('mp-valor-total').textContent='R$ 0,00';
   document.getElementById('modal-prod').classList.remove('hidden');
 };
 window.editarProd=(id)=>{
@@ -830,12 +839,25 @@ window.editarProd=(id)=>{
   document.getElementById('mp-qtd').value=p.qtd;
   document.getElementById('mp-min').value=p.min;
   document.getElementById('mp-validade').value=p.validade||'';
+  document.getElementById('mp-valor-unit').value=p.valorUnit||'';
+  document.getElementById('mp-valor-total').textContent = p.valorUnit ? fmtBRL(p.valorUnit * p.qtd) : 'R$ 0,00';
   document.getElementById('modal-prod').classList.remove('hidden');
 };
 window.salvarProd=async()=>{
   const nome=document.getElementById('mp-nome').value.trim();
   if(!nome){toast('Informe o nome do produto.','error');return;}
-  const obj={nome,cat:document.getElementById('mp-cat').value,un:document.getElementById('mp-un').value,qtd:+document.getElementById('mp-qtd').value||0,min:+document.getElementById('mp-min').value||0,validade:document.getElementById('mp-validade').value||''};
+  const qtd = +document.getElementById('mp-qtd').value||0;
+  const valorUnit = parseFloat(document.getElementById('mp-valor-unit').value)||0;
+  const obj={
+    nome,
+    cat:document.getElementById('mp-cat').value,
+    un:document.getElementById('mp-un').value,
+    qtd,
+    min:+document.getElementById('mp-min').value||0,
+    validade:document.getElementById('mp-validade').value||'',
+    valorUnit,
+    valorTotal: valorUnit * qtd
+  };
   const resp=prompt('Seu nome (para registro de auditoria):');
   if(!resp)return;
   if(editDocId){
