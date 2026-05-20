@@ -153,6 +153,7 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
     <div class="nav-item active" onclick="navTo('estoque',this)"><span class="nav-icon">▦</span> Estoque</div>
     <div class="nav-item" onclick="navTo('movimentacoes',this)"><span class="nav-icon">⇄</span> Movimentações</div>
     <div class="nav-item" onclick="navTo('notas',this)"><span class="nav-icon">◈</span> Notas fiscais</div>
+    <div class="nav-item" onclick="navTo('historico-nf',this)"><span class="nav-icon">🧾</span> Hist. de NFs</div>
     <div class="nav-item" onclick="navTo('historico',this)"><span class="nav-icon">↗</span> Histórico</div>
     <div class="nav-item" onclick="navTo('alertas',this)"><span class="nav-icon">⚠</span> Alertas <span class="nav-badge" id="nbadge"></span></div>
     <div class="nav-item" onclick="navTo('auditoria',this)"><span class="nav-icon">🔒</span> Auditoria</div>
@@ -192,7 +193,7 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
         <button class="btn primary" onclick="abrirModalMov(null)">+ Registrar</button>
       </div>
       <div class="content">
-        <div class="tbl-wrap"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd.</th><th>Valor Unit.</th><th>Valor Total</th><th>Fornecedor</th><th>Nº Nota</th><th>Responsável</th><th>Status</th><th>Ação</th></tr></thead><tbody id="tbody-mov"></tbody></table></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd.</th><th>Fornecedor</th><th>Nº Nota</th><th>Responsável</th><th>Status</th><th>Ação</th></tr></thead><tbody id="tbody-mov"></tbody></table></div>
       </div>
     </div>
 
@@ -220,7 +221,16 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
       </div>
     </div>
 
-    <!-- HISTÓRICO -->
+    <!-- HISTÓRICO DE NFs -->
+    <div id="page-historico-nf" class="hidden">
+      <div class="header">
+        <div><div class="page-title">Histórico de Notas Fiscais</div><div class="page-sub">Notas lançadas manualmente — agrupadas por número</div></div>
+        <input class="inp" style="width:200px" placeholder="Buscar NF, fornecedor..." id="filtro-nf-hist" oninput="renderHistNF()">
+      </div>
+      <div class="content" id="content-historico-nf"></div>
+    </div>
+
+    <!-- HISTÓRICO DE CONSUMO -->
     <div id="page-historico" class="hidden">
       <div class="header">
         <div><div class="page-title">Histórico de consumo</div><div class="page-sub">Apenas saídas ativas (estornos excluídos)</div></div>
@@ -404,6 +414,15 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
   </div>
 </div>
 
+<!-- MODAL ÚLTIMA COMPRA DO PRODUTO -->
+<div id="modal-ultima-compra" class="modal-overlay hidden">
+  <div class="modal" style="width:480px">
+    <div class="modal-title" id="uc-titulo">Última compra</div>
+    <div id="uc-conteudo"></div>
+    <div class="modal-actions"><button class="btn primary" onclick="fecharModal('modal-ultima-compra')">Fechar</button></div>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
@@ -486,8 +505,101 @@ window.navTo=(page,el)=>{
   el.classList.add('active');
   if(page==='alertas')renderAlertas();
   if(page==='historico')renderHist();
+  if(page==='historico-nf')renderHistNF();
   if(page==='notas')renderNotas();
   if(page==='auditoria')renderLog();
+};
+
+/* ───── HISTÓRICO DE NFs ───── */
+window.renderHistNF = () => {
+  const filtro = (document.getElementById('filtro-nf-hist')?.value||'').toLowerCase();
+  // Pega só movimentações que vieram de NF (têm número de nota)
+  const comNota = movs.filter(m => m.num && m.num !== '' && m.tipo !== 'estorno');
+  // Agrupa por número de nota
+  const grupos = {};
+  comNota.forEach(m => {
+    const key = m.num;
+    if(!grupos[key]) grupos[key] = {num:m.num, forn:m.forn||'—', cnpj:m.cnpj||'—', data:m.data, tipo:m.tipo, resp:m.resp, itens:[], valorTotal:0};
+    grupos[key].itens.push(m);
+    grupos[key].valorTotal += m.valorTotal||0;
+  });
+  let lista = Object.values(grupos).sort((a,b)=>b.data?.localeCompare(a.data||'')||0);
+  if(filtro) lista = lista.filter(g => g.num?.toLowerCase().includes(filtro) || g.forn?.toLowerCase().includes(filtro));
+  const el = document.getElementById('content-historico-nf');
+  if(lista.length===0){el.innerHTML='<div style="text-align:center;padding:40px;color:#888780">Nenhuma nota fiscal lançada ainda.</div>';return;}
+  el.innerHTML = lista.map(g=>`
+    <div style="border:1px solid #e8e8e0;border-radius:8px;margin-bottom:12px;overflow:hidden">
+      <div style="background:#f5f5f3;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;cursor:pointer" onclick="toggleNFDetalhe('nfd-${g.num.replace(/\W/g,'_')}')">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:13px;font-weight:700">NF ${g.num}</span>
+          <span style="font-size:12px;color:#888780">${g.forn}</span>
+          <span style="font-size:12px;color:#888780">${formatDate(g.data)}</span>
+          <span class="badge ${g.tipo==='entrada'?'ent':'sai'}">${g.tipo==='entrada'?'Entrada':'Saída'}</span>
+          <span style="font-size:12px;color:#888780">Resp.: ${g.resp}</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center">
+          ${g.valorTotal>0?`<span style="font-weight:700;color:#0F6E56">${fmtBRL(g.valorTotal)}</span>`:''}
+          <span style="font-size:11px;color:#888780">${g.itens.length} produto(s)</span>
+          <span style="font-size:11px;color:#1D9E75">▼ ver itens</span>
+        </div>
+      </div>
+      <div id="nfd-${g.num.replace(/\W/g,'_')}" style="display:none">
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead><tr style="border-bottom:1px solid #e8e8e0"><th style="padding:7px 14px;text-align:left;color:#888780">Produto</th><th style="padding:7px 14px;text-align:right;color:#888780">Qtd.</th><th style="padding:7px 14px;text-align:right;color:#888780">Valor Unit.</th><th style="padding:7px 14px;text-align:right;color:#888780">Valor Total</th><th style="padding:7px 14px;text-align:left;color:#888780">Status</th></tr></thead>
+          <tbody>${g.itens.map(it=>`<tr class="${it.estornada?'estornada':''}" style="border-bottom:1px solid #f0f0e8">
+            <td style="padding:7px 14px;font-weight:600">${it.produto}</td>
+            <td style="padding:7px 14px;text-align:right">${it.qtd}</td>
+            <td style="padding:7px 14px;text-align:right;color:#888780">${it.valorUnit?fmtBRL(it.valorUnit):'—'}</td>
+            <td style="padding:7px 14px;text-align:right;font-weight:600;color:#0F6E56">${it.valorTotal?fmtBRL(it.valorTotal):'—'}</td>
+            <td style="padding:7px 14px">${it.estornada?'<span style="color:#888780;font-size:11px">Estornado</span>':'<span class="badge ok">Ativo</span>'}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`).join('');
+};
+window.toggleNFDetalhe = id => {
+  const el = document.getElementById(id);
+  if(el) el.style.display = el.style.display==='none' ? 'block' : 'none';
+};
+
+/* ───── ÚLTIMA COMPRA DO PRODUTO ───── */
+window.abrirUltimaCompra = (nomeProd) => {
+  const entradas = movs.filter(m => m.produto===nomeProd && m.tipo==='entrada' && !m.estornada)
+    .sort((a,b)=>b.data?.localeCompare(a.data||'')||0);
+  const uc = entradas[0];
+  document.getElementById('uc-titulo').textContent = nomeProd;
+  if(!uc){
+    document.getElementById('uc-conteudo').innerHTML = '<div style="color:#888780;font-size:13px;padding:8px 0">Nenhuma entrada registrada para este produto.</div>';
+  } else {
+    // Histórico das últimas 5 compras
+    const historico = entradas.slice(0,5).map(e=>`
+      <tr style="border-bottom:1px solid #f0f0e8">
+        <td style="padding:6px 10px">${formatDate(e.data)}</td>
+        <td style="padding:6px 10px;font-weight:600">${e.forn||'—'}</td>
+        <td style="padding:6px 10px;text-align:right">${e.qtd}</td>
+        <td style="padding:6px 10px;text-align:right;color:#0F6E56">${e.valorTotal?fmtBRL(e.valorTotal):'—'}</td>
+        <td style="padding:6px 10px;color:#888780">${e.num||'—'}</td>
+      </tr>`).join('');
+    document.getElementById('uc-conteudo').innerHTML = `
+      <div style="background:#EAF3DE;border-radius:8px;padding:12px 14px;margin-bottom:14px">
+        <div style="font-size:11px;color:#3B6D11;font-weight:600;margin-bottom:6px">ÚLTIMA COMPRA</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+          <div><span style="color:#888780;font-size:11px">Data</span><div style="font-weight:600">${formatDate(uc.data)}</div></div>
+          <div><span style="color:#888780;font-size:11px">Fornecedor</span><div style="font-weight:600">${uc.forn||'—'}</div></div>
+          <div><span style="color:#888780;font-size:11px">Quantidade</span><div style="font-weight:600">${uc.qtd}</div></div>
+          <div><span style="color:#888780;font-size:11px">Valor total</span><div style="font-weight:600;color:#0F6E56">${uc.valorTotal?fmtBRL(uc.valorTotal):'—'}</div></div>
+          ${uc.num?`<div><span style="color:#888780;font-size:11px">NF</span><div style="font-weight:600">${uc.num}</div></div>`:''}
+          ${uc.resp?`<div><span style="color:#888780;font-size:11px">Responsável</span><div style="font-weight:600">${uc.resp}</div></div>`:''}
+        </div>
+      </div>
+      ${entradas.length>1?`
+      <div style="font-size:11px;font-weight:600;color:#888780;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Últimas ${Math.min(5,entradas.length)} compras</div>
+      <div class="tbl-wrap"><table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr style="border-bottom:1px solid #e8e8e0"><th style="padding:6px 10px;text-align:left;color:#888780">Data</th><th style="padding:6px 10px;text-align:left;color:#888780">Fornecedor</th><th style="padding:6px 10px;text-align:right;color:#888780">Qtd.</th><th style="padding:6px 10px;text-align:right;color:#888780">Total</th><th style="padding:6px 10px;text-align:left;color:#888780">NF</th></tr></thead>
+        <tbody>${historico}</tbody>
+      </table></div>`:''}`;
+  }
+  document.getElementById('modal-ultima-compra').classList.remove('hidden');
 };
 
 /* ───── HELPERS ───── */
@@ -550,6 +662,7 @@ function renderEst(){
       <td style="font-size:11px;color:#888780">${p.validade?formatDate(p.validade)+''+valdTag:'—'}</td>
       <td>${statusP(p)}</td>
       <td><div style="display:flex;gap:4px">
+        <button class="btn sm" onclick="abrirUltimaCompra('${p.nome.replace(/'/g,"\\'")}')">🛒</button>
         <button class="btn sm" onclick="editarProd('${p._id}')">Editar</button>
         <button class="btn danger sm" onclick="remProd('${p._id}','${p.nome}')">Excluir</button>
       </div></td></tr>`;
@@ -623,8 +736,6 @@ function renderMovs(){
         <td>${formatDate(m.data)}</td><td style="font-weight:600">${m.produto}</td>
         <td><span class="badge ${m.tipo==='entrada'?'ent':m.tipo==='estorno'?'est':'sai'}">${m.tipo==='entrada'?'Entrada':m.tipo==='estorno'?'Estorno':'Saída'}</span></td>
         <td>${m.qtd}</td>
-        <td style="color:#888780">${vu}</td>
-        <td style="font-weight:600;color:#0F6E56">${vt}</td>
         <td style="color:#888780">${m.forn||'—'}</td>
         <td style="color:#888780">${m.num||'—'}</td>
         <td>${m.resp}</td>
