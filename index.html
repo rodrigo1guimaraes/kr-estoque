@@ -177,7 +177,17 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
             <option value="status">Status</option>
             <option value="cat">Categoria</option>
           </select>
-          <button class="btn primary" onclick="abrirModalProd()">+ Novo produto</button>
+          <!-- Modo bloqueado: botão Editar com senha -->
+          <div id="est-modo-bloqueado" style="display:flex;gap:6px;align-items:center">
+            <input class="inp" id="est-senha" type="password" placeholder="🔒 Senha" style="width:110px" onkeydown="if(event.key==='Enter')liberarEdicaoEstoque()">
+            <button class="btn" onclick="liberarEdicaoEstoque()">Editar produtos</button>
+          </div>
+          <!-- Modo liberado: botões de ação + bloquear -->
+          <div id="est-modo-liberado" style="display:none;gap:6px;align-items:center">
+            <span style="font-size:11px;color:#1D9E75;font-weight:600">🔓 Modo edição ativo</span>
+            <button class="btn primary" onclick="abrirModalProd()">+ Novo produto</button>
+            <button class="btn warning" onclick="bloquearEdicaoEstoque()">Bloquear</button>
+          </div>
         </div>
       </div>
       <div class="content">
@@ -762,8 +772,10 @@ function renderEst(){
       <td>${statusP(p)}</td>
       <td><div style="display:flex;gap:4px">
         <button class="btn sm" onclick="abrirUltimaCompra('${p.nome.replace(/'/g,"\\'")}')">🛒</button>
+        ${estoqueLiberado?`
         <button class="btn sm" onclick="editarProd('${p._id}')">Editar</button>
-        <button class="btn danger sm" onclick="remProd('${p._id}','${p.nome}')">Excluir</button>
+        <button class="btn danger sm" onclick="remProd('${p._id}','${p.nome}')">Excluir</button>`
+        :''}
       </div></td></tr>`;
     }).join('');
   const al=produtos.filter(p=>p.qtd<p.min||validadeStatus(p.validade)==='vencido').length;
@@ -773,6 +785,32 @@ function renderEst(){
 window.toggleFiltroStatus=v=>{filtroStatus=filtroStatus===v?'':v;renderEst();};
 window.setOrdem=v=>{ordemEst=v;renderEst();};
 window.filtrarEst=v=>{filtroEst=v;renderEst()};
+
+/* ───── MODO EDIÇÃO ESTOQUE ───── */
+let estoqueLiberado = false;
+
+window.liberarEdicaoEstoque = () => {
+  const senha = document.getElementById('est-senha').value;
+  if(senha !== SENHA_ADMIN){
+    toast('Senha incorreta.','error');
+    document.getElementById('est-senha').value='';
+    return;
+  }
+  estoqueLiberado = true;
+  document.getElementById('est-modo-bloqueado').style.display='none';
+  document.getElementById('est-modo-liberado').style.display='flex';
+  document.getElementById('est-senha').value='';
+  renderEst();
+  toast('Modo edição ativado.');
+};
+
+window.bloquearEdicaoEstoque = () => {
+  estoqueLiberado = false;
+  document.getElementById('est-modo-bloqueado').style.display='flex';
+  document.getElementById('est-modo-liberado').style.display='none';
+  renderEst();
+  toast('Edição bloqueada.','warning');
+};
 window.filtrarCat=v=>{catEst=v;renderEst()};
 
 /* ───── PRODUTO MODAL ───── */
