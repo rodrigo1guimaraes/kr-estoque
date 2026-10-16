@@ -1798,9 +1798,11 @@ window.renderRelatorio = function renderRelatorio(){
   const saidaPorResp = {};
   saidas.forEach(m => {
     const resp = m.resp || 'Sem responsável';
-    if(!saidaPorResp[resp]) saidaPorResp[resp] = {qtdMovs:0, produtos: new Set()};
+    if(!saidaPorResp[resp]) saidaPorResp[resp] = {qtdMovs:0, qtdTotal:0, produtos:{}};
     saidaPorResp[resp].qtdMovs += 1;
-    saidaPorResp[resp].produtos.add(m.produto);
+    saidaPorResp[resp].qtdTotal += m.qtd || 0;
+    if(!saidaPorResp[resp].produtos[m.produto]) saidaPorResp[resp].produtos[m.produto] = 0;
+    saidaPorResp[resp].produtos[m.produto] += m.qtd || 0;
   });
   const totalQtdSaidas = saidas.reduce((a,m) => a + (m.qtd||0), 0);
 
@@ -1830,16 +1832,27 @@ window.renderRelatorio = function renderRelatorio(){
         }).join('')}</tbody>
       </table></div>`;
 
-  const saidaRespList = Object.entries(saidaPorResp).sort((a,b) => b[1].qtdMovs - a[1].qtdMovs);
-  const tblSaidaResp = saidaRespList.length === 0 ? '' :
-    `<div class="tbl-wrap" style="margin-top:12px"><table>
-      <thead><tr><th>Funcionário</th><th style="text-align:right">Retiradas</th><th>Produtos retirados</th></tr></thead>
-      <tbody>${saidaRespList.map(([resp, dados]) => `<tr>
-        <td style="font-weight:600">${resp}</td>
-        <td style="text-align:right;color:#888780">${dados.qtdMovs}x</td>
-        <td style="font-size:11px;color:#888780">${[...dados.produtos].join(', ')}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>`;
+  const saidaRespList = Object.entries(saidaPorResp).sort((a,b) => b[1].qtdTotal - a[1].qtdTotal);
+  const maxQtdResp = saidaRespList.length > 0 ? saidaRespList[0][1].qtdTotal : 1;
+
+  // Cards por funcionário — destaque principal
+  const cardsResp = saidaRespList.length === 0
+    ? `<div style="text-align:center;padding:24px;color:#888780;font-size:12px">Nenhuma saída no período.</div>`
+    : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">
+        ${saidaRespList.map(([resp, dados]) => {
+          const pct = Math.round((dados.qtdTotal / maxQtdResp) * 100);
+          const topProd = Object.entries(dados.produtos).sort((a,b)=>b[1]-a[1])[0];
+          return `<div class="card">
+            <div style="font-size:13px;font-weight:700;margin-bottom:6px">${resp}</div>
+            <div style="font-size:22px;font-weight:800;color:#A32D2D;margin-bottom:2px">${dados.qtdTotal}</div>
+            <div style="font-size:10px;color:#888780;margin-bottom:8px">${dados.qtdMovs} retirada${dados.qtdMovs!==1?'s':''} · ${Object.keys(dados.produtos).length} produto${Object.keys(dados.produtos).length!==1?'s':''}</div>
+            <div style="height:5px;background:#e8e8e0;border-radius:3px;overflow:hidden;margin-bottom:6px">
+              <div style="height:100%;background:#A32D2D;width:${pct}%;border-radius:3px"></div>
+            </div>
+            ${topProd ? `<div style="font-size:10px;color:#888780">Mais usado: <strong style="color:#1a1a1a">${topProd[0]}</strong> (${topProd[1]})</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
 
   const secaoSaidas = `
     <div style="margin-bottom:20px">
@@ -1850,9 +1863,10 @@ window.renderRelatorio = function renderRelatorio(){
         <div class="card"><div class="card-label">Produtos distintos usados</div><div class="card-value" style="font-size:16px">${Object.keys(saidaPorProd).length}</div></div>
         <div class="card"><div class="card-label">Funcionários que retiraram</div><div class="card-value" style="font-size:16px">${Object.keys(saidaPorResp).length}</div></div>
       </div>
+      <div class="section-title" style="margin-bottom:10px">Quantidade retirada por funcionário</div>
+      ${cardsResp}
       <div class="section-title" style="margin-bottom:8px">O que foi usado</div>
       ${tblSaidaProd}
-      ${saidaRespList.length > 0 ? `<div class="section-title" style="margin:14px 0 8px">Quem retirou</div>${tblSaidaResp}` : ''}
     </div>`;
 
   el.innerHTML = aviso + cards + barChart + tblProd + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">` + tblCat + tblForn + '</div>' + tblResp + secaoSaidas + tblMes;
@@ -1987,27 +2001,4 @@ function runOCR(id,dataUrl,fileName){
   const thumb=document.getElementById('thumb-'+id);
   if(thumb&&!thumb.querySelector('img'))thumb.innerHTML=`<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover">`;
   if(!window.Tesseract){
-    loadScript('https://unpkg.com/tesseract.js@5.0.4/dist/tesseract.min.js').then(()=>doRecognize(id,dataUrl,fileName));
-  } else doRecognize(id,dataUrl,fileName);
-}
-
-function doRecognize(id,dataUrl,fileName){
-  Tesseract.recognize(dataUrl,'por+eng',{
-    logger:m=>{
-      if(m.status==='recognizing text'){
-        const p=Math.round(m.progress*100);
-        const el=document.getElementById('prog-'+id);if(el)el.style.width=p+'%';
-        const sub=document.getElementById('ocr-sub-'+id);if(sub)sub.textContent=`Reconhecendo... ${p}%`;
-      }
-    }
-  }).then(({data:{text}})=>{
-    const ocr=parseNotaText(text);
-    ocr._notaName=fileName;
-    const n=window.notas.find(n=>n.id===id);if(n)n.ocrData=ocr;
-    renderNotas();
-    const st=document.getElementById('ocr-st-'+id);
-    st.className='ocr-status done';st.innerHTML='✓ OCR concluído';
-    document.getElementById('prog-'+id)?.parentElement?.remove();
-    const sub=document.getElementById('ocr-sub-'+id);if(sub)sub.textContent='Leitura completa';
-    const temDados=ocr.fornecedor||ocr.cnpj||ocr.numero||ocr.data||ocr.produto||ocr.quantidade;
-    
+   
