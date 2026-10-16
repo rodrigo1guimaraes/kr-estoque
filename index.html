@@ -1585,6 +1585,18 @@ window.renderRelatorio = function renderRelatorio(){
     porForn[forn] += m.valorTotal || 0;
   });
 
+  // Agrupa por responsável (quem lançou a entrada)
+  const porResp = {};
+  entradas.forEach(m => {
+    const resp = m.resp || 'Sem responsável';
+    if(!porResp[resp]) porResp[resp] = {total:0, qtdMovs:0, comValor:0};
+    porResp[resp].qtdMovs += 1;
+    if(m.valorTotal && m.valorTotal > 0){
+      porResp[resp].total += m.valorTotal;
+      porResp[resp].comValor += 1;
+    }
+  });
+
   // Agrupa por produto (entradas com valor)
   const porProd = {};
   comValor.forEach(m => {
@@ -1750,7 +1762,33 @@ window.renderRelatorio = function renderRelatorio(){
     return;
   }
 
-  el.innerHTML = aviso + cards + barChart + tblProd + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">` + tblCat + tblForn + '</div>' + tblMes;
+  // Tabela por responsável
+  const respList = Object.entries(porResp).sort((a,b) => b[1].total - a[1].total);
+  const tblResp = respList.length === 0 ? '' : `
+    <div style="margin-bottom:20px">
+      <div class="row-between"><div class="section-title">Gastos por funcionário</div></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Funcionário</th><th style="text-align:right">Entradas lançadas</th><th style="text-align:right">Total gasto</th><th style="text-align:right">% do total</th></tr></thead>
+        <tbody>${respList.map(([resp, dados]) => {
+          const pct = totalGasto > 0 ? ((dados.total / totalGasto) * 100).toFixed(1) : '0.0';
+          return `<tr>
+            <td style="font-weight:600">${resp}</td>
+            <td style="text-align:right;color:#888780">${dados.qtdMovs} entrada${dados.qtdMovs!==1?'s':''}</td>
+            <td style="text-align:right;font-weight:700;color:#0F6E56">${dados.total > 0 ? fmtBRL(dados.total) : '—'}</td>
+            <td style="text-align:right">
+              ${dados.total > 0 ? `<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+                <div style="width:80px;height:6px;background:#e8e8e0;border-radius:3px;overflow:hidden">
+                  <div style="height:100%;background:#1D9E75;width:${pct}%;border-radius:3px"></div>
+                </div>
+                <span style="font-size:11px;color:#888780;min-width:36px;text-align:right">${pct}%</span>
+              </div>` : '—'}
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>`;
+
+  el.innerHTML = aviso + cards + barChart + tblProd + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">` + tblCat + tblForn + '</div>' + tblResp + tblMes;
 };
 
 /* ───── OCR TESSERACT ───── */
@@ -1960,30 +1998,4 @@ window.renderNotas=()=>{
         <div class="nota-fmeta">${formatBytes(n.size)} · ${n.date}${n.ocrData?` · <span style="color:#0F6E56;font-weight:600">OCR ✓</span>`:''}</div>
         <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
           ${n.ocrData?`<button class="btn sm" onclick="abrirModalMov(window.notas.find(x=>x.id==='${n.id}').ocrData)" style="font-size:10px">Registrar</button>`:''}
-          <button class="btn danger sm" onclick="removerNota('${n.id}')" style="font-size:10px">Excluir</button>
-        </div>
-      </div>
-    </div>`).join('');
-};
-window.removerNota=id=>{window.notas=window.notas.filter(n=>n.id!==id);document.getElementById('ocrbox-'+id)?.remove();window.renderNotas();};
-function formatBytes(b){if(b<1024)return b+'B';if(b<1048576)return Math.round(b/1024)+'KB';return(b/1048576).toFixed(1)+'MB'}
-
-window.abrirPreview=id=>{
-  const n=window.notas.find(n=>n.id===id);if(!n)return;
-  document.getElementById('preview-title').textContent=n.name;
-  const img=document.getElementById('preview-img');
-  if(n.isPdf&&n.pdfThumb){img.src=n.pdfThumb;img.style.display='block';}
-  else if(!n.isPdf){img.src=n.dataUrl;img.style.display='block';}
-  else{img.style.display='none';}
-  const od=document.getElementById('preview-ocr');
-  if(n.ocrData){const o=n.ocrData;od.innerHTML=`<div class="ocr-result"><div class="ocr-result-title">Dados OCR</div>${o.fornecedor?`<div class="ocr-field"><span class="ocr-field-label">Fornecedor</span><span class="ocr-field-value">${o.fornecedor}</span></div>`:''}${o.cnpj?`<div class="ocr-field"><span class="ocr-field-label">CNPJ</span><span class="ocr-field-value">${o.cnpj}</span></div>`:''}${o.numero?`<div class="ocr-field"><span class="ocr-field-label">Nº</span><span class="ocr-field-value">${o.numero}</span></div>`:''}${o.data?`<div class="ocr-field"><span class="ocr-field-label">Data</span><span class="ocr-field-value">${o.data}</span></div>`:''}</div>`;}
-  else od.innerHTML='';
-  document.getElementById('preview-overlay').classList.remove('hidden');
-};
-
-window.fecharModal=id=>document.getElementById(id).classList.add('hidden');
-document.querySelectorAll('.modal-overlay').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.add('hidden')}));
-document.getElementById('preview-overlay').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.add('hidden')});
-</script>
-</body>
-</html>
+          <button cl
