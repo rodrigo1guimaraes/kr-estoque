@@ -157,6 +157,8 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
     <div class="nav-item" onclick="navTo('historico-nf',this)"><span class="nav-icon">🧾</span> Hist. de NFs <span style="font-size:10px;margin-left:auto">🔒</span></div>
     <div class="nav-item" onclick="navTo('historico',this)"><span class="nav-icon">↗</span> Histórico</div>
     <div class="nav-item" onclick="navTo('alertas',this)"><span class="nav-icon">⚠</span> Alertas <span class="nav-badge" id="nbadge"></span></div>
+    <div class="nav-sep"></div>
+    <div class="nav-item" onclick="navTo('relatorios',this)"><span class="nav-icon">📊</span> Relatórios</div>
     <div class="nav-item" onclick="navTo('auditoria',this)"><span class="nav-icon">🔒</span> Auditoria <span style="font-size:10px;margin-left:auto">🔒</span></div>
   </div>
 
@@ -271,6 +273,22 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
     <div id="page-alertas" class="hidden">
       <div class="header"><div><div class="page-title">Alertas</div><div class="page-sub">Estoque abaixo do mínimo e produtos próximos do vencimento</div></div></div>
       <div class="content" id="content-alertas"></div>
+    </div>
+
+    <!-- RELATÓRIOS -->
+    <div id="page-relatorios" class="hidden">
+      <div class="header">
+        <div><div class="page-title">Relatório de Gastos</div><div class="page-sub">Gastos com insumos baseados nas movimentações de entrada</div></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select class="inp" id="rel-periodo" onchange="renderRelatorio()">
+            <option value="3">Últimos 3 meses</option>
+            <option value="6" selected>Últimos 6 meses</option>
+            <option value="12">Últimos 12 meses</option>
+            <option value="0">Todo o período</option>
+          </select>
+        </div>
+      </div>
+      <div class="content" id="content-relatorios"></div>
     </div>
 
     <!-- AUDITORIA -->
@@ -624,6 +642,7 @@ window.navTo=(page,el)=>{
   if(page==='notas')renderNotas();
   if(page==='auditoria')renderLog();
   if(page==='campo')renderCampo();
+  if(page==='relatorios')renderRelatorio();
 };
 
 /* ───── HISTÓRICO DE NFs ───── */
@@ -1475,6 +1494,213 @@ function renderHist(){
     :data.map(h=>{const[y,mo]=h.mes.split('-');return`<tr><td>${MESES[+mo-1]}/${y}</td><td style="font-weight:600">${h.produto}</td><td>${catBadge(h.cat)}</td><td style="color:#0F6E56;font-weight:600">${h.qtd}</td><td style="color:#888780">${h.resp}</td></tr>`;}).join('');
 }
 window.renderHist=renderHist;
+
+/* ───── RELATÓRIO DE GASTOS ───── */
+window.renderRelatorio = function renderRelatorio(){
+  const n = parseInt(document.getElementById('rel-periodo')?.value || 6);
+  const now = new Date();
+
+  // Filtra entradas ativas (não estornadas) no período
+  let entradas = movs.filter(m => m.tipo === 'entrada' && !m.estornada);
+  if(n > 0){
+    const limite = new Date(now.getFullYear(), now.getMonth() - n + 1, 1);
+    const limStr = limite.toISOString().slice(0,7); // 'YYYY-MM'
+    entradas = entradas.filter(m => m.data && m.data.slice(0,7) >= limStr);
+  }
+
+  // Verifica cobertura de valores
+  const comValor = entradas.filter(m => m.valorTotal && m.valorTotal > 0);
+  const semValor = entradas.filter(m => !m.valorTotal || m.valorTotal <= 0);
+  const cobertura = entradas.length > 0 ? Math.round((comValor.length / entradas.length) * 100) : 0;
+
+  const totalGasto = comValor.reduce((a, m) => a + (m.valorTotal || 0), 0);
+
+  // Agrupa por mês
+  const porMes = {};
+  comValor.forEach(m => {
+    const mes = m.data ? m.data.slice(0,7) : '—';
+    if(!porMes[mes]) porMes[mes] = 0;
+    porMes[mes] += m.valorTotal || 0;
+  });
+  const mesesOrdenados = Object.keys(porMes).sort();
+
+  // Agrupa por categoria
+  const porCat = {};
+  comValor.forEach(m => {
+    const prod = produtos.find(p => p.nome === m.produto);
+    const cat = prod ? prod.cat : 'Sem categoria';
+    if(!porCat[cat]) porCat[cat] = 0;
+    porCat[cat] += m.valorTotal || 0;
+  });
+
+  // Agrupa por fornecedor
+  const porForn = {};
+  comValor.forEach(m => {
+    const forn = m.forn || 'Sem fornecedor';
+    if(!porForn[forn]) porForn[forn] = 0;
+    porForn[forn] += m.valorTotal || 0;
+  });
+
+  // Agrupa por produto
+  const porProd = {};
+  comValor.forEach(m => {
+    if(!porProd[m.produto]) porProd[m.produto] = {total:0,qtd:0};
+    porProd[m.produto].total += m.valorTotal || 0;
+    porProd[m.produto].qtd += m.qtd || 0;
+  });
+
+  const el = document.getElementById('content-relatorios');
+
+  // Aviso de cobertura incompleta
+  const aviso = semValor.length > 0
+    ? `<div style="background:#FFF8E8;border:1px solid #FAEEDA;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#854F0B">
+        ⚠ ${semValor.length} movimentação(ões) sem valor registrado estão excluídas deste relatório.
+        Os valores são preenchidos ao lançar uma nota fiscal com valor total. Para dados completos, edite as entradas antigas no Hist. de NFs.
+       </div>`
+    : '';
+
+  // Cards de resumo
+  const topMes = mesesOrdenados.length > 0 ? Math.max(...Object.values(porMes)) : 0;
+  const mediaMes = mesesOrdenados.length > 0 ? totalGasto / mesesOrdenados.length : 0;
+
+  const cards = `<div class="cards-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+    <div class="card"><div class="card-label">Total no período</div><div class="card-value" style="font-size:16px;color:#0F6E56">${fmtBRL(totalGasto)}</div></div>
+    <div class="card"><div class="card-label">Média mensal</div><div class="card-value green" style="font-size:16px">${fmtBRL(mediaMes)}</div></div>
+    <div class="card"><div class="card-label">Entradas com valor</div><div class="card-value" style="font-size:16px">${cobertura}%</div></div>
+    <div class="card"><div class="card-label">Meses com compras</div><div class="card-value" style="font-size:16px">${mesesOrdenados.length}</div></div>
+  </div>`;
+
+  // Gráfico de barras por mês (CSS puro)
+  const maxMes = topMes || 1;
+  const barChart = mesesOrdenados.length === 0 ? '' : `
+    <div style="margin-bottom:20px">
+      <div class="row-between"><div class="section-title">Gastos por mês</div></div>
+      <div style="border:1px solid #e8e8e0;border-radius:8px;padding:16px;background:#fafaf8">
+        <div style="display:flex;align-items:flex-end;gap:8px;height:120px;margin-bottom:8px">
+          ${mesesOrdenados.map(mes => {
+            const val = porMes[mes];
+            const pct = Math.round((val / maxMes) * 100);
+            const [y, m] = mes.split('-');
+            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0">
+              <div style="font-size:10px;font-weight:600;color:#0F6E56;white-space:nowrap">${fmtBRL(val).replace('R$ ','')}</div>
+              <div style="width:100%;background:#1D9E75;border-radius:4px 4px 0 0;height:${pct}%;min-height:4px;transition:height .3s"></div>
+              <div style="font-size:10px;color:#888780;white-space:nowrap">${MESES[+m-1]}/${y.slice(2)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+
+  // Tabela por produto
+  const prodList = Object.entries(porProd).sort((a,b) => b[1].total - a[1].total);
+  const tblProd = prodList.length === 0 ? '' : `
+    <div style="margin-bottom:20px">
+      <div class="row-between"><div class="section-title">Gastos por produto</div></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>#</th><th>Produto</th><th>Categoria</th><th style="text-align:right">Qtd. comprada</th><th style="text-align:right">Total gasto</th><th style="text-align:right">% do total</th></tr></thead>
+        <tbody>${prodList.map(([nome, dados], i) => {
+          const prod = produtos.find(p => p.nome === nome);
+          const pct = totalGasto > 0 ? ((dados.total / totalGasto) * 100).toFixed(1) : '0.0';
+          return `<tr>
+            <td style="color:#888780;font-size:11px">${i+1}</td>
+            <td style="font-weight:600">${nome}</td>
+            <td>${prod ? catBadge(prod.cat) : '—'}</td>
+            <td style="text-align:right;color:#888780">${dados.qtd}</td>
+            <td style="text-align:right;font-weight:700;color:#0F6E56">${fmtBRL(dados.total)}</td>
+            <td style="text-align:right">
+              <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+                <div style="width:60px;height:6px;background:#e8e8e0;border-radius:3px;overflow:hidden">
+                  <div style="height:100%;background:#1D9E75;width:${pct}%;border-radius:3px"></div>
+                </div>
+                <span style="font-size:11px;color:#888780;min-width:32px;text-align:right">${pct}%</span>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>`;
+
+  // Tabela por categoria
+  const catList = Object.entries(porCat).sort((a,b) => b[1] - a[1]);
+  const tblCat = catList.length === 0 ? '' : `
+    <div style="margin-bottom:20px">
+      <div class="row-between"><div class="section-title">Gastos por categoria</div></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Categoria</th><th style="text-align:right">Total</th><th style="text-align:right">% do total</th></tr></thead>
+        <tbody>${catList.map(([cat, total]) => {
+          const pct = totalGasto > 0 ? ((total / totalGasto) * 100).toFixed(1) : '0.0';
+          return `<tr>
+            <td>${catBadge(cat)}</td>
+            <td style="text-align:right;font-weight:700;color:#0F6E56">${fmtBRL(total)}</td>
+            <td style="text-align:right">
+              <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+                <div style="width:80px;height:6px;background:#e8e8e0;border-radius:3px;overflow:hidden">
+                  <div style="height:100%;background:#1D9E75;width:${pct}%;border-radius:3px"></div>
+                </div>
+                <span style="font-size:11px;color:#888780;min-width:36px;text-align:right">${pct}%</span>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>`;
+
+  // Tabela por fornecedor
+  const fornList = Object.entries(porForn).sort((a,b) => b[1] - a[1]);
+  const tblForn = fornList.length === 0 ? '' : `
+    <div style="margin-bottom:20px">
+      <div class="row-between"><div class="section-title">Gastos por fornecedor</div></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Fornecedor</th><th style="text-align:right">Total</th><th style="text-align:right">% do total</th></tr></thead>
+        <tbody>${fornList.map(([forn, total]) => {
+          const pct = totalGasto > 0 ? ((total / totalGasto) * 100).toFixed(1) : '0.0';
+          return `<tr>
+            <td style="font-weight:600">${forn}</td>
+            <td style="text-align:right;font-weight:700;color:#0F6E56">${fmtBRL(total)}</td>
+            <td style="text-align:right">
+              <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+                <div style="width:80px;height:6px;background:#e8e8e0;border-radius:3px;overflow:hidden">
+                  <div style="height:100%;background:#1D9E75;width:${pct}%;border-radius:3px"></div>
+                </div>
+                <span style="font-size:11px;color:#888780;min-width:36px;text-align:right">${pct}%</span>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>`;
+
+  // Tabela mensal detalhada
+  const tblMes = mesesOrdenados.length === 0 ? '' : `
+    <div style="margin-bottom:20px">
+      <div class="row-between"><div class="section-title">Resumo mensal</div></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Mês</th><th style="text-align:right">Total</th><th style="text-align:right">vs. média</th></tr></thead>
+        <tbody>${[...mesesOrdenados].reverse().map(mes => {
+          const val = porMes[mes];
+          const [y, m] = mes.split('-');
+          const diff = mediaMes > 0 ? ((val - mediaMes) / mediaMes * 100) : 0;
+          const diffStr = diff >= 0 ? `<span style="color:#A32D2D">▲ ${diff.toFixed(0)}%</span>` : `<span style="color:#0F6E56">▼ ${Math.abs(diff).toFixed(0)}%</span>`;
+          return `<tr>
+            <td style="font-weight:600">${MESES[+m-1]}/${y}</td>
+            <td style="text-align:right;font-weight:700;color:#0F6E56">${fmtBRL(val)}</td>
+            <td style="text-align:right;font-size:11px">${Math.abs(diff) < 1 ? '<span style="color:#888780">= média</span>' : diffStr}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>`;
+
+  if(entradas.length === 0){
+    el.innerHTML = `${aviso}<div style="text-align:center;padding:60px;color:#888780">
+      <div style="font-size:32px;margin-bottom:12px">📊</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px">Nenhuma entrada no período</div>
+      <div style="font-size:12px">Registre entradas com valor para visualizar os gastos.</div>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = aviso + cards + barChart + tblProd + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">` + tblCat + tblForn + '</div>' + tblMes;
+};
 
 /* ───── OCR TESSERACT ───── */
 window.onDragOver=e=>{e.preventDefault();document.getElementById('drop-zone').classList.add('drag')};
