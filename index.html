@@ -279,13 +279,21 @@ tr.estornada td:last-child{opacity:1;text-decoration:none}
     <div id="page-relatorios" class="hidden">
       <div class="header">
         <div><div class="page-title">Relatório de Gastos</div><div class="page-sub">Gastos com insumos baseados nas movimentações de entrada</div></div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <select class="inp" id="rel-periodo" onchange="renderRelatorio()">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select class="inp" id="rel-periodo" onchange="relPeriodoChange()">
+            <option value="1">Último mês</option>
             <option value="3">Últimos 3 meses</option>
             <option value="6" selected>Últimos 6 meses</option>
             <option value="12">Últimos 12 meses</option>
             <option value="0">Todo o período</option>
+            <option value="custom">Personalizado</option>
           </select>
+          <div id="rel-custom-dates" class="hidden" style="display:flex;gap:6px;align-items:center">
+            <label style="font-size:11px;color:#888780">De</label>
+            <input type="date" class="inp" id="rel-data-ini" onchange="renderRelatorio()" style="width:130px">
+            <label style="font-size:11px;color:#888780">até</label>
+            <input type="date" class="inp" id="rel-data-fim" onchange="renderRelatorio()" style="width:130px">
+          </div>
         </div>
       </div>
       <div class="content" id="content-relatorios"></div>
@@ -1496,16 +1504,52 @@ function renderHist(){
 window.renderHist=renderHist;
 
 /* ───── RELATÓRIO DE GASTOS ───── */
+window.relPeriodoChange = function(){
+  const v = document.getElementById('rel-periodo')?.value;
+  const custom = document.getElementById('rel-custom-dates');
+  if(v === 'custom'){
+    custom.classList.remove('hidden');
+    custom.style.display='flex';
+    // preenche datas padrão se vazias
+    const ini = document.getElementById('rel-data-ini');
+    const fim = document.getElementById('rel-data-fim');
+    if(!fim.value){ const d=new Date(); fim.value=d.toISOString().slice(0,10); }
+    if(!ini.value){ const d=new Date(); d.setMonth(d.getMonth()-1); ini.value=d.toISOString().slice(0,10); }
+  } else {
+    custom.classList.add('hidden');
+  }
+  renderRelatorio();
+};
+
 window.renderRelatorio = function renderRelatorio(){
-  const n = parseInt(document.getElementById('rel-periodo')?.value || 6);
+  const periodoVal = document.getElementById('rel-periodo')?.value || '6';
   const now = new Date();
 
-  // Filtra entradas ativas (não estornadas) no período
-  let entradas = movs.filter(m => m.tipo === 'entrada' && !m.estornada);
-  if(n > 0){
-    const limite = new Date(now.getFullYear(), now.getMonth() - n + 1, 1);
-    const limStr = limite.toISOString().slice(0,7); // 'YYYY-MM'
-    entradas = entradas.filter(m => m.data && m.data.slice(0,7) >= limStr);
+  // Filtra entradas ativas (não estornadas)
+  let todasEntradas = movs.filter(m => m.tipo === 'entrada' && !m.estornada);
+  let todasSaidas = movs.filter(m => m.tipo === 'saida' && !m.estornada);
+
+  let entradas, saidas;
+  if(periodoVal === 'custom'){
+    const iniVal = document.getElementById('rel-data-ini')?.value;
+    const fimVal = document.getElementById('rel-data-fim')?.value;
+    if(!iniVal || !fimVal){
+      document.getElementById('content-relatorios').innerHTML='<div style="padding:40px;text-align:center;color:#888780">Selecione as datas de início e fim.</div>';
+      return;
+    }
+    entradas = todasEntradas.filter(m => m.data && m.data >= iniVal && m.data <= fimVal);
+    saidas   = todasSaidas.filter(m => m.data && m.data >= iniVal && m.data <= fimVal);
+  } else {
+    const n = parseInt(periodoVal);
+    if(n > 0){
+      const limite = new Date(now.getFullYear(), now.getMonth() - n + 1, 1);
+      const limStr = limite.toISOString().slice(0,7);
+      entradas = todasEntradas.filter(m => m.data && m.data.slice(0,7) >= limStr);
+      saidas   = todasSaidas.filter(m => m.data && m.data.slice(0,7) >= limStr);
+    } else {
+      entradas = todasEntradas;
+      saidas   = todasSaidas;
+    }
   }
 
   // Verifica cobertura de valores
@@ -1541,12 +1585,17 @@ window.renderRelatorio = function renderRelatorio(){
     porForn[forn] += m.valorTotal || 0;
   });
 
-  // Agrupa por produto
+  // Agrupa por produto (entradas com valor)
   const porProd = {};
   comValor.forEach(m => {
-    if(!porProd[m.produto]) porProd[m.produto] = {total:0,qtd:0};
+    if(!porProd[m.produto]) porProd[m.produto] = {total:0,qtdComprada:0,qtdUsada:0};
     porProd[m.produto].total += m.valorTotal || 0;
-    porProd[m.produto].qtd += m.qtd || 0;
+    porProd[m.produto].qtdComprada += m.qtd || 0;
+  });
+  // Agrupa saídas por produto no mesmo período
+  saidas.forEach(m => {
+    if(!porProd[m.produto]) porProd[m.produto] = {total:0,qtdComprada:0,qtdUsada:0};
+    porProd[m.produto].qtdUsada += m.qtd || 0;
   });
 
   const el = document.getElementById('content-relatorios');
@@ -1597,23 +1646,25 @@ window.renderRelatorio = function renderRelatorio(){
     <div style="margin-bottom:20px">
       <div class="row-between"><div class="section-title">Gastos por produto</div></div>
       <div class="tbl-wrap"><table>
-        <thead><tr><th>#</th><th>Produto</th><th>Categoria</th><th style="text-align:right">Qtd. comprada</th><th style="text-align:right">Total gasto</th><th style="text-align:right">% do total</th></tr></thead>
+        <thead><tr><th>#</th><th>Produto</th><th>Categoria</th><th style="text-align:right">Qtd. comprada</th><th style="text-align:right">Qtd. utilizada</th><th style="text-align:right">Total gasto</th><th style="text-align:right">% do total</th></tr></thead>
         <tbody>${prodList.map(([nome, dados], i) => {
           const prod = produtos.find(p => p.nome === nome);
           const pct = totalGasto > 0 ? ((dados.total / totalGasto) * 100).toFixed(1) : '0.0';
+          const un = prod?.un || '';
           return `<tr>
             <td style="color:#888780;font-size:11px">${i+1}</td>
             <td style="font-weight:600">${nome}</td>
             <td>${prod ? catBadge(prod.cat) : '—'}</td>
-            <td style="text-align:right;color:#888780">${dados.qtd}</td>
-            <td style="text-align:right;font-weight:700;color:#0F6E56">${fmtBRL(dados.total)}</td>
+            <td style="text-align:right;color:#888780">${dados.qtdComprada} ${un}</td>
+            <td style="text-align:right;color:${dados.qtdUsada>0?'#A32D2D':'#888780'}">${dados.qtdUsada > 0 ? dados.qtdUsada+' '+un : '—'}</td>
+            <td style="text-align:right;font-weight:700;color:#0F6E56">${dados.total > 0 ? fmtBRL(dados.total) : '—'}</td>
             <td style="text-align:right">
-              <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+              ${dados.total > 0 ? `<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
                 <div style="width:60px;height:6px;background:#e8e8e0;border-radius:3px;overflow:hidden">
                   <div style="height:100%;background:#1D9E75;width:${pct}%;border-radius:3px"></div>
                 </div>
                 <span style="font-size:11px;color:#888780;min-width:32px;text-align:right">${pct}%</span>
-              </div>
+              </div>` : '—'}
             </td>
           </tr>`;
         }).join('')}</tbody>
