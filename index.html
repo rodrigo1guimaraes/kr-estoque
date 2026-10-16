@@ -1788,7 +1788,74 @@ window.renderRelatorio = function renderRelatorio(){
       </table></div>
     </div>`;
 
-  el.innerHTML = aviso + cards + barChart + tblProd + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">` + tblCat + tblForn + '</div>' + tblResp + tblMes;
+  // ── SEÇÃO SAÍDAS ──
+  const saidaPorProd = {};
+  saidas.forEach(m => {
+    if(!saidaPorProd[m.produto]) saidaPorProd[m.produto] = {qtd:0, movs:0};
+    saidaPorProd[m.produto].qtd += m.qtd || 0;
+    saidaPorProd[m.produto].movs += 1;
+  });
+  const saidaPorResp = {};
+  saidas.forEach(m => {
+    const resp = m.resp || 'Sem responsável';
+    if(!saidaPorResp[resp]) saidaPorResp[resp] = {qtdMovs:0, produtos: new Set()};
+    saidaPorResp[resp].qtdMovs += 1;
+    saidaPorResp[resp].produtos.add(m.produto);
+  });
+  const totalQtdSaidas = saidas.reduce((a,m) => a + (m.qtd||0), 0);
+
+  const saidaProdList = Object.entries(saidaPorProd).sort((a,b) => b[1].qtd - a[1].qtd);
+  const tblSaidaProd = saidaProdList.length === 0
+    ? `<div style="text-align:center;padding:24px;color:#888780;font-size:12px">Nenhuma saída no período.</div>`
+    : `<div class="tbl-wrap"><table>
+        <thead><tr><th>#</th><th>Produto</th><th>Categoria</th><th style="text-align:right">Qtd. utilizada</th><th style="text-align:right">Retiradas</th></tr></thead>
+        <tbody>${saidaProdList.map(([nome, dados], i) => {
+          const prod = produtos.find(p => p.nome === nome);
+          const un = prod?.un || '';
+          const pct = totalQtdSaidas > 0 ? ((dados.qtd / totalQtdSaidas) * 100).toFixed(1) : '0.0';
+          return `<tr>
+            <td style="color:#888780;font-size:11px">${i+1}</td>
+            <td style="font-weight:600">${nome}</td>
+            <td>${prod ? catBadge(prod.cat) : '—'}</td>
+            <td style="text-align:right">
+              <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+                <div style="width:60px;height:6px;background:#e8e8e0;border-radius:3px;overflow:hidden">
+                  <div style="height:100%;background:#A32D2D;width:${pct}%;border-radius:3px"></div>
+                </div>
+                <span style="font-weight:700;color:#A32D2D">${dados.qtd} ${un}</span>
+              </div>
+            </td>
+            <td style="text-align:right;color:#888780">${dados.movs}x</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+
+  const saidaRespList = Object.entries(saidaPorResp).sort((a,b) => b[1].qtdMovs - a[1].qtdMovs);
+  const tblSaidaResp = saidaRespList.length === 0 ? '' :
+    `<div class="tbl-wrap" style="margin-top:12px"><table>
+      <thead><tr><th>Funcionário</th><th style="text-align:right">Retiradas</th><th>Produtos retirados</th></tr></thead>
+      <tbody>${saidaRespList.map(([resp, dados]) => `<tr>
+        <td style="font-weight:600">${resp}</td>
+        <td style="text-align:right;color:#888780">${dados.qtdMovs}x</td>
+        <td style="font-size:11px;color:#888780">${[...dados.produtos].join(', ')}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+
+  const secaoSaidas = `
+    <div style="margin-bottom:20px">
+      <div style="border-top:2px solid #e8e8e0;margin:8px 0 16px"></div>
+      <div style="font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:12px">📤 Saídas no período</div>
+      <div class="cards-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px">
+        <div class="card"><div class="card-label">Total de retiradas</div><div class="card-value" style="font-size:16px;color:#A32D2D">${saidas.length}</div></div>
+        <div class="card"><div class="card-label">Produtos distintos usados</div><div class="card-value" style="font-size:16px">${Object.keys(saidaPorProd).length}</div></div>
+        <div class="card"><div class="card-label">Funcionários que retiraram</div><div class="card-value" style="font-size:16px">${Object.keys(saidaPorResp).length}</div></div>
+      </div>
+      <div class="section-title" style="margin-bottom:8px">O que foi usado</div>
+      ${tblSaidaProd}
+      ${saidaRespList.length > 0 ? `<div class="section-title" style="margin:14px 0 8px">Quem retirou</div>${tblSaidaResp}` : ''}
+    </div>`;
+
+  el.innerHTML = aviso + cards + barChart + tblProd + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">` + tblCat + tblForn + '</div>' + tblResp + secaoSaidas + tblMes;
 };
 
 /* ───── OCR TESSERACT ───── */
@@ -1943,59 +2010,4 @@ function doRecognize(id,dataUrl,fileName){
     document.getElementById('prog-'+id)?.parentElement?.remove();
     const sub=document.getElementById('ocr-sub-'+id);if(sub)sub.textContent='Leitura completa';
     const temDados=ocr.fornecedor||ocr.cnpj||ocr.numero||ocr.data||ocr.produto||ocr.quantidade;
-    const campos=temDados?[
-      ocr.fornecedor&&`<div class="ocr-field"><span class="ocr-field-label">Fornecedor</span><span class="ocr-field-value">${ocr.fornecedor}</span></div>`,
-      ocr.cnpj&&`<div class="ocr-field"><span class="ocr-field-label">CNPJ</span><span class="ocr-field-value">${ocr.cnpj}</span></div>`,
-      ocr.numero&&`<div class="ocr-field"><span class="ocr-field-label">Nº da nota</span><span class="ocr-field-value">${ocr.numero}</span></div>`,
-      ocr.data&&`<div class="ocr-field"><span class="ocr-field-label">Data</span><span class="ocr-field-value">${ocr.data}</span></div>`,
-    ].filter(Boolean).join(''):'';
-    document.getElementById('ocr-res-'+id).innerHTML=temDados
-      ?`<div class="ocr-result" style="margin-top:10px"><div class="ocr-result-title">Dados extraídos</div>${campos}</div>
-         <div style="display:flex;gap:8px;margin-top:10px">
-           <button class="btn primary" onclick="abrirModalMov(window.notas.find(n=>n.id==='${id}').ocrData)">Registrar movimentação</button>
-           <button class="btn sm" onclick="abrirPreview('${id}')">Ver imagem</button>
-           <button class="btn danger sm" onclick="removerNota('${id}')">Excluir</button>
-         </div>`
-      :`<div style="font-size:12px;color:#888780;padding:8px;background:#fafaf8;border-radius:6px;margin-top:8px">Nenhum dado extraído. Preencha manualmente.</div>
-        <div style="margin-top:8px;display:flex;gap:8px">
-          <button class="btn sm" onclick="abrirModalMov(null)">Preencher manualmente</button>
-          <button class="btn danger sm" onclick="removerNota('${id}')">Excluir</button>
-        </div>`;
-  }).catch(()=>{
-    const st=document.getElementById('ocr-st-'+id);
-    if(st){st.className='ocr-status error';st.innerHTML='Erro ao processar. Tente com uma imagem mais nítida.';}
-  });
-}
-
-function parseNotaText(text){
-  const r={};
-  const cnpjM=text.match(/\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2}/);
-  if(cnpjM)r.cnpj=cnpjM[0].replace(/\s/g,'');
-  const nfM=text.match(/(?:NF|N\.F\.|NOTA FISCAL|NF-e|N[oº]\.?\s*)[\s\-\:]?(\d{3,9})/i);
-  if(nfM)r.numero='NF-'+nfM[1];
-  const dateM=text.match(/(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{2,4})/);
-  if(dateM){const y=dateM[3].length===2?'20'+dateM[3]:dateM[3];r.data=`${y}-${dateM[2]}-${dateM[1]}`;}
-  const qtdM=text.match(/(?:qtd|quantidade|quant|qtde)[\s\:\.\-]*(\d+[\.,]?\d*)/i);
-  if(qtdM)r.quantidade=qtdM[1].replace(',','.');
-  const linhas=text.split('\n').map(l=>l.trim()).filter(l=>l.length>4);
-  const fornM=linhas.find(l=>/ltda|s\.a\.|s\/a|eireli|me\b|epp\b|distribui|comercial|qu[ií]mica|agro/i.test(l));
-  if(fornM)r.fornecedor=fornM.replace(/[^\w\sáàâãéèêíïóôõöúçñA-Z\.]/gi,'').trim().slice(0,60);
-  const prodM=linhas.find(l=>/ciperm|deltam|brodif|bromar|imida|máscara|luva|bomba|inset|roden|fungic/i.test(l));
-  if(prodM)r.produto=prodM.slice(0,50);
-  return r;
-}
-
-window.renderNotas=()=>{
-  document.getElementById('notas-count').textContent=`${window.notas.length} arquivo${window.notas.length!==1?'s':''}`;
-  const wrap=document.getElementById('notas-galeria-wrap');
-  if(window.notas.length===0){wrap.classList.add('hidden');return;}
-  wrap.classList.remove('hidden');
-  document.getElementById('notas-grid').innerHTML=window.notas.map(n=>`
-    <div class="nota-card">
-      <div class="nota-thumb" onclick="abrirPreview('${n.id}')">${n.isPdf?(n.pdfThumb?`<img src="${n.pdfThumb}">`:'📄'):`<img src="${n.dataUrl}">`}</div>
-      <div class="nota-foot">
-        <div class="nota-fname">${n.name}</div>
-        <div class="nota-fmeta">${formatBytes(n.size)} · ${n.date}${n.ocrData?` · <span style="color:#0F6E56;font-weight:600">OCR ✓</span>`:''}</div>
-        <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
-          ${n.ocrData?`<button class="btn sm" onclick="abrirModalMov(window.notas.find(x=>x.id==='${n.id}').ocrData)" style="font-size:10px">Registrar</button>`:''}
-          <button cl
+    
