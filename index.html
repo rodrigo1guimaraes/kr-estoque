@@ -1835,38 +1835,79 @@ window.renderRelatorio = function renderRelatorio(){
   const saidaRespList = Object.entries(saidaPorResp).sort((a,b) => b[1].qtdTotal - a[1].qtdTotal);
   const maxQtdResp = saidaRespList.length > 0 ? saidaRespList[0][1].qtdTotal : 1;
 
-  // Cards por funcionário — destaque principal
+  // Monta semanas do período para o histórico semanal
+  // Pega todas as datas de saída e descobre as semanas únicas (seg-dom)
+  const getSegunda = d => { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
+  const semanasSet = new Set(saidas.map(m => m.data ? getSegunda(m.data) : null).filter(Boolean));
+  const semanas = [...semanasSet].sort(); // array de datas de segunda-feira, ordem crescente
+
+  // Para cada funcionário, para cada produto, para cada semana: qtd retirada
+  const histResp = {};
+  saidas.forEach(m => {
+    const resp = m.resp || 'Sem responsável';
+    const seg = m.data ? getSegunda(m.data) : null;
+    if(!seg) return;
+    if(!histResp[resp]) histResp[resp] = {};
+    if(!histResp[resp][m.produto]) histResp[resp][m.produto] = {};
+    if(!histResp[resp][m.produto][seg]) histResp[resp][m.produto][seg] = 0;
+    histResp[resp][m.produto][seg] += m.qtd || 0;
+  });
+
+  // Formata label da semana: "04/10"
+  const fmtSem = seg => { const [,m,d]=seg.split('-'); return `${d}/${m}`; };
+
+  // Cards por funcionário com histórico semanal por produto
   const cardsResp = saidaRespList.length === 0
     ? `<div style="text-align:center;padding:24px;color:#888780;font-size:12px">Nenhuma saída no período.</div>`
-    : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">
-        ${saidaRespList.map(([resp, dados]) => {
-          const pct = Math.round((dados.qtdTotal / maxQtdResp) * 100);
-          const prodList = Object.entries(dados.produtos).sort((a,b) => b[1]-a[1]);
-          return `<div class="card">
-            <div style="font-size:13px;font-weight:700;margin-bottom:4px">${resp}</div>
-            <div style="font-size:20px;font-weight:800;color:#A32D2D;margin-bottom:2px">${dados.qtdTotal} <span style="font-size:11px;font-weight:400;color:#888780">itens retirados</span></div>
-            <div style="height:4px;background:#e8e8e0;border-radius:3px;overflow:hidden;margin-bottom:10px">
-              <div style="height:100%;background:#A32D2D;width:${pct}%;border-radius:3px"></div>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              ${prodList.map(([prod, qtd]) => {
-                const p = produtos.find(x => x.nome === prod);
-                const un = p?.un || '';
-                const pctProd = dados.qtdTotal > 0 ? Math.round((qtd/dados.qtdTotal)*100) : 0;
-                return `<div>
-                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:4px;margin-bottom:2px">
-                    <span style="font-size:11px;color:#1a1a1a;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${prod}</span>
-                    <span style="font-size:12px;font-weight:700;color:#A32D2D;white-space:nowrap">${qtd} ${un}</span>
-                  </div>
-                  <div style="height:3px;background:#e8e8e0;border-radius:2px;overflow:hidden">
-                    <div style="height:100%;background:#FBBDBD;width:${pctProd}%;border-radius:2px"></div>
-                  </div>
-                </div>`;
-              }).join('')}
-            </div>
-          </div>`;
-        }).join('')}
-      </div>`;
+    : saidaRespList.map(([resp, dados]) => {
+        const pct = Math.round((dados.qtdTotal / maxQtdResp) * 100);
+        const prodList = Object.entries(dados.produtos).sort((a,b) => b[1]-a[1]);
+        const hist = histResp[resp] || {};
+
+        // Tabela semanal por produto
+        const linhasProd = prodList.map(([prod, qtdTotal]) => {
+          const p = produtos.find(x => x.nome === prod);
+          const un = p?.un || '';
+          const maxSem = semanas.length > 0 ? Math.max(...semanas.map(s => hist[prod]?.[s] || 0), 1) : 1;
+          const colunas = semanas.map(seg => {
+            const qtd = hist[prod]?.[seg] || 0;
+            const h = qtd > 0 ? Math.max(Math.round((qtd/maxSem)*28), 4) : 0;
+            return `<td style="text-align:center;vertical-align:bottom;padding:0 2px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+                ${qtd > 0 ? `<span style="font-size:9px;font-weight:700;color:#A32D2D">${qtd}</span>` : '<span style="font-size:9px;color:#e8e8e0">·</span>'}
+                <div style="width:18px;background:${qtd>0?'#A32D2D':'#e8e8e0'};border-radius:2px 2px 0 0;height:${h}px;min-height:2px"></div>
+              </div>
+            </td>`;
+          }).join('');
+          return `<tr style="border-bottom:1px solid #f0efe8">
+            <td style="padding:4px 8px 4px 0;font-size:10px;color:#1a1a1a;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${prod}">${prod}</td>
+            <td style="padding:4px 8px;font-size:10px;font-weight:700;color:#A32D2D;white-space:nowrap">${qtdTotal} ${un}</td>
+            ${colunas}
+          </tr>`;
+        }).join('');
+
+        const cabSemanas = semanas.map(seg =>
+          `<th style="text-align:center;font-size:9px;color:#888780;font-weight:600;padding:0 2px;min-width:22px">${fmtSem(seg)}</th>`
+        ).join('');
+
+        return `<div class="card" style="min-width:0">
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px">${resp}</div>
+          <div style="font-size:18px;font-weight:800;color:#A32D2D;margin-bottom:2px">${dados.qtdTotal} <span style="font-size:11px;font-weight:400;color:#888780">itens retirados</span></div>
+          <div style="height:4px;background:#e8e8e0;border-radius:3px;overflow:hidden;margin-bottom:10px">
+            <div style="height:100%;background:#A32D2D;width:${pct}%;border-radius:3px"></div>
+          </div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr>
+                <th style="text-align:left;font-size:9px;color:#888780;font-weight:600;padding-bottom:4px">Produto</th>
+                <th style="text-align:left;font-size:9px;color:#888780;font-weight:600;padding:0 8px 4px">Total</th>
+                ${cabSemanas}
+              </tr></thead>
+              <tbody>${linhasProd}</tbody>
+            </table>
+          </div>
+        </div>`;
+      }).join('');
 
   const secaoSaidas = `
     <div style="margin-bottom:20px">
@@ -1877,8 +1918,8 @@ window.renderRelatorio = function renderRelatorio(){
         <div class="card"><div class="card-label">Produtos distintos usados</div><div class="card-value" style="font-size:16px">${Object.keys(saidaPorProd).length}</div></div>
         <div class="card"><div class="card-label">Funcionários que retiraram</div><div class="card-value" style="font-size:16px">${Object.keys(saidaPorResp).length}</div></div>
       </div>
-      <div class="section-title" style="margin-bottom:10px">Quantidade retirada por funcionário</div>
-      ${cardsResp}
+      <div class="section-title" style="margin-bottom:10px">Retiradas por funcionário — histórico semanal</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">${cardsResp}</div>
       <div class="section-title" style="margin-bottom:8px">O que foi usado</div>
       ${tblSaidaProd}
     </div>`;
@@ -1962,42 +2003,4 @@ async function processPDF(file,id){
       const canvas=document.createElement('canvas');
       canvas.width=vp.width;canvas.height=vp.height;
       await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
-      const imgUrl=canvas.toDataURL('image/png');
-      const thumb=document.getElementById('thumb-'+id);
-      if(thumb)thumb.innerHTML=`<img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover">`;
-      const n=window.notas.find(n=>n.id===id);if(n)n.pdfThumb=imgUrl;
-      renderNotas();setProg(60);setSub('Executando OCR...');
-      setSt('running','<span class="spin">↻</span>&nbsp; Lendo texto da nota (OCR)...');
-      runOCR(id,imgUrl,file.name);
-    }catch(e){
-      setSt('error','Erro ao processar PDF. Tente converter para JPG.');console.error(e);
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-function processHEIC(file,id){
-  criarBox(id,'📱',file.name);
-  const setSub=t=>{const el=document.getElementById('ocr-sub-'+id);if(el)el.textContent=t;};
-  const setSt=(cls,txt)=>{const el=document.getElementById('ocr-st-'+id);if(el){el.className='ocr-status '+cls;el.innerHTML=txt;}};
-  setSt('running','<span class="spin">↻</span>&nbsp; Convertendo foto do iPhone (HEIC)...');
-  setSub('Convertendo...');
-  createImageBitmap(file).then(bitmap=>{
-    const canvas=document.createElement('canvas');
-    canvas.width=bitmap.width;canvas.height=bitmap.height;
-    canvas.getContext('2d').drawImage(bitmap,0,0);
-    const dataUrl=canvas.toDataURL('image/jpeg',0.92);
-    const thumb=document.getElementById('thumb-'+id);
-    if(thumb)thumb.innerHTML=`<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover">`;
-    window.notas.push({id,name:file.name,type:'image/jpeg',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
-    renderNotas();setSub('Conversão ok. Iniciando OCR...');runOCR(id,dataUrl,file.name);
-  }).catch(()=>{
-    const url=URL.createObjectURL(file);
-    const img=new Image();
-    img.onload=()=>{
-      const canvas=document.createElement('canvas');
-      canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
-      canvas.getContext('2d').drawImage(img,0,0);
-      const dataUrl=canvas.toDataURL('image/jpeg',0.92);
-      window.notas.push({id,name:file.name,type:'image/jpeg',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
-      renderNotas();setSub('Conversão ok. In
+      const imgUrl=canvas.toDataURL('ima
