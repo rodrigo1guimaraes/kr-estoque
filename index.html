@@ -1841,15 +1841,29 @@ window.renderRelatorio = function renderRelatorio(){
     : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">
         ${saidaRespList.map(([resp, dados]) => {
           const pct = Math.round((dados.qtdTotal / maxQtdResp) * 100);
-          const topProd = Object.entries(dados.produtos).sort((a,b)=>b[1]-a[1])[0];
+          const prodList = Object.entries(dados.produtos).sort((a,b) => b[1]-a[1]);
           return `<div class="card">
-            <div style="font-size:13px;font-weight:700;margin-bottom:6px">${resp}</div>
-            <div style="font-size:22px;font-weight:800;color:#A32D2D;margin-bottom:2px">${dados.qtdTotal}</div>
-            <div style="font-size:10px;color:#888780;margin-bottom:8px">${dados.qtdMovs} retirada${dados.qtdMovs!==1?'s':''} · ${Object.keys(dados.produtos).length} produto${Object.keys(dados.produtos).length!==1?'s':''}</div>
-            <div style="height:5px;background:#e8e8e0;border-radius:3px;overflow:hidden;margin-bottom:6px">
+            <div style="font-size:13px;font-weight:700;margin-bottom:4px">${resp}</div>
+            <div style="font-size:20px;font-weight:800;color:#A32D2D;margin-bottom:2px">${dados.qtdTotal} <span style="font-size:11px;font-weight:400;color:#888780">itens retirados</span></div>
+            <div style="height:4px;background:#e8e8e0;border-radius:3px;overflow:hidden;margin-bottom:10px">
               <div style="height:100%;background:#A32D2D;width:${pct}%;border-radius:3px"></div>
             </div>
-            ${topProd ? `<div style="font-size:10px;color:#888780">Mais usado: <strong style="color:#1a1a1a">${topProd[0]}</strong> (${topProd[1]})</div>` : ''}
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${prodList.map(([prod, qtd]) => {
+                const p = produtos.find(x => x.nome === prod);
+                const un = p?.un || '';
+                const pctProd = dados.qtdTotal > 0 ? Math.round((qtd/dados.qtdTotal)*100) : 0;
+                return `<div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:4px;margin-bottom:2px">
+                    <span style="font-size:11px;color:#1a1a1a;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${prod}</span>
+                    <span style="font-size:12px;font-weight:700;color:#A32D2D;white-space:nowrap">${qtd} ${un}</span>
+                  </div>
+                  <div style="height:3px;background:#e8e8e0;border-radius:2px;overflow:hidden">
+                    <div style="height:100%;background:#FBBDBD;width:${pctProd}%;border-radius:2px"></div>
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>
           </div>`;
         }).join('')}
       </div>`;
@@ -1986,19 +2000,4 @@ function processHEIC(file,id){
       canvas.getContext('2d').drawImage(img,0,0);
       const dataUrl=canvas.toDataURL('image/jpeg',0.92);
       window.notas.push({id,name:file.name,type:'image/jpeg',size:file.size,date:new Date().toLocaleDateString('pt-BR'),dataUrl,ocrData:null,isPdf:false});
-      renderNotas();setSub('Conversão ok. Iniciando OCR...');runOCR(id,dataUrl,file.name);
-      URL.revokeObjectURL(url);
-    };
-    img.onerror=()=>setSt('error','HEIC não suportado. Salve como JPG e envie novamente.');
-    img.src=url;
-  });
-}
-
-function runOCR(id,dataUrl,fileName){
-  if(!document.getElementById('ocrbox-'+id)) criarBox(id,'🖼',fileName);
-  const setSt=(cls,txt)=>{const el=document.getElementById('ocr-st-'+id);if(el){el.className='ocr-status '+cls;el.innerHTML=txt;}};
-  setSt('running','<span class="spin">↻</span>&nbsp; Lendo nota com OCR gratuito (Tesseract.js)...');
-  const thumb=document.getElementById('thumb-'+id);
-  if(thumb&&!thumb.querySelector('img'))thumb.innerHTML=`<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover">`;
-  if(!window.Tesseract){
-   
+      renderNotas();setSub('Conversão ok. In
